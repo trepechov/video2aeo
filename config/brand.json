@@ -1,0 +1,45 @@
+{
+  "_comment": "Generic defaults. Put the real brand in ~/.yt-aeo/brand.json (any subset of these keys; it is deep-merged over this file) – never commit it. Values marked {{...}} must be filled by the brand owner; the validator lists any that remain.",
+  "language": "bg",
+  "channel": "{{CHANNEL_NAME}}",
+  "series": [],
+  "topics": "{{CHANNEL_TOPICS}}",
+  "site": {
+    "base_url": "https://example.com",
+    "kb_path": "baza-znaniya",
+    "kb_name": "База знания"
+  },
+  "organization": {
+    "name": "{{ORG_NAME}}",
+    "url": "https://example.com/",
+    "logo": "{{ORG_LOGO_URL}}",
+    "same_as": []
+  },
+  "people": {},
+  "description": {
+    "questions_heading": "Основни въпроси, на които ще получите отговор:",
+    "article_label": "📖 Статия, FAQ и пълен транскрипт:",
+    "chapters_heading": "⏱️ Глави:",
+    "footer": "🕔 Нов епизод {{SCHEDULE}}.\n📩 Пишете въпросите си в коментарите – най-интересните ще включим в следващия епизод.\n_______________________________________\n{{PROMO_BLOCK}}\n_______________________________________\nСъдържанието е с информационна цел и не представлява финансов, правен или данъчен съвет. Пълен отказ от отговорност: {{DISCLAIMER_URL}}\n_______________________________________\n👍 Харесайте, споделете и се абонирайте.\n📲 {{SOCIAL_LINKS}}"
+  },
+  "article": {
+    "jsonld_in_content": true,
+    "labels": {
+      "answer": "Кратък отговор:",
+      "takeaways": "Основни изводи",
+      "chapters": "Съдържание на епизода",
+      "watch_segment": "Гледайте този момент от епизода",
+      "faq": "Често задавани въпроси",
+      "transcript": "Транскрипт на епизода",
+      "transcript_summary": "Покажи пълния редактиран транскрипт",
+      "authors": "За авторите",
+      "related": "Още отговори от Базата знания"
+    },
+    "disclaimer": "Материалът е с информационна цел и не представлява финансов, правен или данъчен съвет. Мненията и прогнозите на гостите са лични и са отбелязани като такива."
+  },
+  "currency": {
+    "eur_rate": 1.95583,
+    "euro_since": "2026-01-01",
+    "rule": "Sums in лева from before 2026 keep the original figure and add the euro equivalent in brackets, e.g. „94 млрд. лв. (≈ 48,1 млрд. €)“."
+  }
+}

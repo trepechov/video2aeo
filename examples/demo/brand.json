@@ -1,0 +1,12 @@
+{
+  "_comment": "Fictional demo brand used by the golden-example checks (YT_AEO_HOME=examples/demo). Same shape as ~/.yt-aeo/brand.json.",
+  "channel": "Примерен подкаст",
+  "series": ["Въпрос на седмицата"],
+  "topics": "лични финанси, жилища, ипотеки",
+  "site": {"base_url": "https://example.com"},
+  "organization": {"name": "Примерна медия", "url": "https://example.com/", "logo": "https://example.com/logo.png", "same_as": []},
+  "people": {"Иван Петров": {"job_title": "водещ на „Примерен подкаст“", "url": "https://example.com/avtori/ivan-petrov/"}},
+  "description": {
+    "footer": "🕔 Нов епизод всяка сряда.\n📩 Пишете въпросите си в коментарите – най-интересните ще включим в следващия епизод.\n_______________________________________\nСъдържанието е с информационна цел и не представлява финансов, правен или данъчен съвет. Пълен отказ от отговорност: https://example.com/disclaimer/\n_______________________________________\n👍 Харесайте, споделете и се абонирайте."
+  }
+}

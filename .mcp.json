@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "yt-aeo-tools": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/server.py"]
+    }
+  }
+}

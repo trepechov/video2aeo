@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+dev/node_modules/
+*.plugin
+episodes/
+.env
+dist/
+
+private/

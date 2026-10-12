@@ -1,0 +1,153 @@
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "@id": "https://example.com/baza-znaniya/naem-ili-pokupka-na-zhilishte/#article",
+      "headline": "Наем или покупка на жилище: кое е по-изгодно? | Въпрос на седмицата Еп. 1",
+      "description": "Над 20 годишни наема наемът обикновено печели, под 15 – покупката. Трите сметки преди решението: съотношение, разходи и хоризонт.",
+      "inLanguage": "bg",
+      "mainEntityOfPage": "https://example.com/baza-znaniya/naem-ili-pokupka-na-zhilishte/",
+      "datePublished": "{{DATE_PUBLISHED}}",
+      "dateModified": "{{DATE_PUBLISHED}}",
+      "author": [
+        {
+          "@type": "Person",
+          "name": "Иван Петров",
+          "jobTitle": "водещ на „Примерен подкаст“",
+          "url": "https://example.com/avtori/ivan-petrov/"
+        },
+        {
+          "@type": "Person",
+          "name": "Мария Георгиева",
+          "jobTitle": "финансов консултант"
+        }
+      ],
+      "publisher": {
+        "@id": "https://example.com/#organization"
+      },
+      "image": "https://i.ytimg.com/vi/{{VIDEO_ID}}/maxresdefault.jpg",
+      "video": {
+        "@id": "https://example.com/baza-znaniya/naem-ili-pokupka-na-zhilishte/#video"
+      },
+      "about": [
+        "наем",
+        "покупка на жилище",
+        "ипотека",
+        "лични финанси"
+      ]
+    },
+    {
+      "@type": "VideoObject",
+      "@id": "https://example.com/baza-znaniya/naem-ili-pokupka-na-zhilishte/#video",
+      "name": "Наем или покупка на жилище: кое е по-изгодно? | Въпрос на седмицата Еп. 1",
+      "description": "Наемът обикновено е по-изгоден, когато цената на жилището е над 20 годишни наема, а покупката – когато е под 15. Покупката се изплаща най-често при хоризонт над 10 години, защото разходите по сделката (около 3%) и поддръжката (около 1% годишно) се разпределят във времето.",
+      "thumbnailUrl": "https://i.ytimg.com/vi/{{VIDEO_ID}}/maxresdefault.jpg",
+      "uploadDate": "2026-09-16T19:00:00+03:00",
+      "duration": "PT14M0S",
+      "embedUrl": "https://www.youtube.com/embed/{{VIDEO_ID}}",
+      "contentUrl": "https://www.youtube.com/watch?v={{VIDEO_ID}}",
+      "inLanguage": "bg",
+      "publisher": {
+        "@id": "https://example.com/#organization"
+      },
+      "hasPart": [
+        {
+          "@type": "Clip",
+          "name": "По-изгодно ли е да наемем или да купим жилище",
+          "startOffset": 0,
+          "endOffset": 75,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=1s"
+        },
+        {
+          "@type": "Clip",
+          "name": "Как се смята съотношението цена към годишен наем",
+          "startOffset": 75,
+          "endOffset": 210,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=75s"
+        },
+        {
+          "@type": "Clip",
+          "name": "Кои скрити разходи променят сметката при покупка",
+          "startOffset": 210,
+          "endOffset": 360,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=210s"
+        },
+        {
+          "@type": "Clip",
+          "name": "След колко години покупката се изплаща",
+          "startOffset": 360,
+          "endOffset": 540,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=360s"
+        },
+        {
+          "@type": "Clip",
+          "name": "Как ипотеката и инфлацията накланят везните",
+          "startOffset": 540,
+          "endOffset": 720,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=540s"
+        },
+        {
+          "@type": "Clip",
+          "name": "Трите сметки преди да решите",
+          "startOffset": 720,
+          "endOffset": 840,
+          "url": "https://www.youtube.com/watch?v={{VIDEO_ID}}&t=720s"
+        }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://example.com/baza-znaniya/naem-ili-pokupka-na-zhilishte/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Кога наемът е по-изгоден от покупката?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Когато цената на жилището е над 20 годишни наема или когато планирате да останете по-малко от 5 години."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Как се смята съотношението цена към наем?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Цената на жилището се дели на годишния наем. Пример: 120 000 € делено на 6 000 € годишен наем дава 20."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Колко струва сделката при покупка на жилище?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Около 3% от цената за нотариус, такси и комисиона, плюс около 1% годишно за поддръжка."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "След колко години покупката се изплаща?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "При хоризонт над 10 години покупката печели в повечето сценарии, разгледани в епизода."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Трябва ли да сравнявам и доходността на самоучастието?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Да. Самоучастието от 20%, ако бъде инвестирано, също носи доходност и трябва да влезе в сравнението."
+          }
+        }
+      ]
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://example.com/#organization",
+      "name": "Примерна медия",
+      "url": "https://example.com/",
+      "logo": "https://example.com/logo.png"
+    }
+  ]
+}
