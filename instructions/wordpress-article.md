@@ -7,10 +7,19 @@ The article title is **the same as the final YouTube title** (`video.title`). It
 (`site.kb_name`). It serves two readers at once: a person who skims (answer first, short paragraphs, headings, tables)
 and an LLM that extracts (self-contained sentences, question headings, FAQ, schema).
 
+## Three readers
+
+Every article is written for a **person**, a **search engine** and an **AI system** at once – none of them is
+neglected. The person gets the answer on the first screen, short paragraphs, plain words and a lead that says why the
+topic matters; the search engine gets a keyphrase in the title, slug, first paragraph and one H2, a distinct meta
+description and sensible tags; the AI gets self-contained, attributed, dated sentences, question headings and schema.
+Never stuff keywords – if a sentence reads badly aloud, rewrite it.
+
 ## Block order (rendered from episode.json – never hand-write markup)
 
 1. **YouTube embed** (core/embed, 16:9, responsive) – always the first block.
-2. **Кратък отговор** – `answer_short` (class `aeo-answer`).
+2. **Кратък отговор** – `answer_short` (class `aeo-answer`). Optional `article.intro` (class `aeo-intro`) follows it:
+   1–2 plain sentences on why the reader should care, no numbers, no repeat of the answer.
 3. **Freshness / editorial note** – `freshness_note` (class `aeo-note`), only if needed.
 4. **Основни изводи** – H2 + 5–7 bullets from `key_takeaways`, each with a number or concrete fact and its source.
 5. **Съдържание на епизода** – H2 + chapter list, each linking to `watch?v=ID&t=Ns`.
@@ -43,6 +52,11 @@ and an LLM that extracts (self-contained sentences, question headings, FAQ, sche
   description already links to this address – once set at Gate A, do not change it.
 - `seo_title` ≤ 60 chars; `meta_description` ≤ 155 chars and answer-first; one `focus_keyphrase` that appears in
   the title or first paragraph.
+- `secondary_keyphrases`: 2–4 other phrasings people search for; each should occur naturally in the text.
+- `excerpt` ≤ 200 chars: the post excerpt (themes, feeds, social previews), answer-first like the meta description.
+- Placement of `focus_keyphrase`: title or first paragraph, slug, at least one H2 – naturally, never forced.
+- The validator warns about: `seo_title` > 60, `meta_description` > 155, tags outside 3–6, > 4 secondary keyphrases,
+  a keyphrase found neither in the title nor in the first paragraph.
 - `category`: `site.kb_name` from the brand config.
 - The SEO plugin (Yoast, Rank Math, …) fields are filled by hand from `wp-post-fields.json`: SEO title, meta
   description, focus keyphrase. The draft push cannot set them (`manual` note in the result).
@@ -66,6 +80,13 @@ and an LLM that extracts (self-contained sentences, question headings, FAQ, sche
 
 Read the rendered article top to bottom as a visitor: does the first screen answer the question? Can you skim the H2s
 and understand the episode? Is every table understandable without the text around it?
+
+## Variants
+
+`render --outputs wordpress --article v2` renders `article.v2.wp.html`, `wp-post-fields.v2.json` and
+`work/schema.v2.jsonld` next to the default files without replacing them. The overrides (`intro`, `seo_title`,
+`meta_description`, `secondary_keyphrases`, `excerpt`, …) live in `work/article.v2.json` and are merged over `article`
+in `episode.json`, which stays untouched.
 
 ## Extending
 

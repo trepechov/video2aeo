@@ -698,6 +698,9 @@ def render_article(ep: dict, brand: dict, transcript_md: str | None = None, sche
     # 3. freshness / editorial note
     if ep.get("freshness_note"):
         B.append(b_paragraph(f"<em>{inline_md(ep['freshness_note'])}</em>", "aeo-note"))
+    # 3b. optional human lead: why a reader should care (after the answer, so the answer stays first)
+    if ep["article"].get("intro"):
+        B.append(b_paragraph(inline_md(ep["article"]["intro"]), "aeo-intro"))
     # 4. key takeaways
     if ep.get("key_takeaways"):
         B.append(b_heading(L["takeaways"], anchor="osnovni-izvodi"))
@@ -816,7 +819,28 @@ def available_outputs(ep: dict) -> list[str]:
     return out
 
 
-def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None, layout: str = "classic") -> dict:
+ARTICLE_VARIANT_FILES = {"classic": ("article.wp.html", "wp-post-fields.json", "schema.jsonld"),
+                         "v2": ("article.v2.wp.html", "wp-post-fields.v2.json", "schema.v2.jsonld")}
+
+
+def article_variant(ep: dict, variant: str, ep_dir: Path | None = None) -> dict:
+    """A copy of the episode whose `article` carries the overrides of a variant (intro, seo_title, meta_description,
+    secondary_keyphrases, excerpt …), read from `work/article.<variant>.json` or `article.<variant>` in episode.json.
+    The default article and episode.json are never touched."""
+    if variant == "classic":
+        return ep
+    over = dict(ep["article"].get(variant) or {})
+    if ep_dir is not None:
+        f = find_work_file(ep_dir, f"article.{variant}.json")
+        if f.exists():
+            over.update(load_json(f))
+    art = {**ep["article"], **over}
+    art.pop(variant, None)
+    return {**ep, "article": art}
+
+
+def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None, layout: str = "classic",
+                   article: str = "classic") -> dict:
     """Render the requested outputs (default: every output whose content exists) into the episode folder.
     Paste-ready files go to the folder itself, schema.jsonld to work/."""
     ep_dir = Path(ep_dir)
@@ -841,19 +865,26 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None, 
         if not (ep.get("sections") and ep.get("faq")):
             skipped.append("wordpress (episode.json has no sections/faq yet – run /video2aeo:wp-article)")
         else:
+            if article not in ARTICLE_VARIANT_FILES:
+                return {"ok": False, "errors": [f"Unknown article variant '{article}'; use {list(ARTICLE_VARIANT_FILES)}."]}
+            art_file, fields_file, schema_file = ARTICLE_VARIANT_FILES[article]
+            ep = article_variant(ep, article, ep_dir)
             tr_path = find_work_file(ep_dir, ep.get("transcript_file") or "transcript.edited.md")
             transcript_md = tr_path.read_text(encoding="utf-8") if tr_path.exists() else None
             schema = render_schema(ep, brand)
-            work_file(ep_dir, "schema.jsonld").write_text(
+            work_file(ep_dir, schema_file).write_text(
                 json.dumps(schema, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            (ep_dir / OUTPUT_FILES["wordpress"]).write_text(render_article(ep, brand, transcript_md, schema), encoding="utf-8")
+            (ep_dir / art_file).write_text(render_article(ep, brand, transcript_md, schema), encoding="utf-8")
             meta = {k: ep["article"].get(k) for k in ("seo_title", "slug", "meta_description", "focus_keyphrase",
                                                        "category", "tags")}
+            for k in ("secondary_keyphrases", "excerpt"):
+                if ep["article"].get(k):
+                    meta[k] = ep["article"][k]
             meta["title"] = ep["video"]["title"]
             meta["url"] = article_url(ep, brand)
-            (ep_dir / "wp-post-fields.json").write_text(
+            (ep_dir / fields_file).write_text(
                 json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            written += [OUTPUT_FILES["wordpress"], "wp-post-fields.json", f"{WORK_DIR}/schema.jsonld"]
+            written += [art_file, fields_file, f"{WORK_DIR}/{schema_file}"]
             result["transcript_included"] = transcript_md is not None
     return {"written": written, "skipped": skipped, **result}
 
@@ -919,6 +950,23 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
         warnings.append("Aim for 5–8 questions in the mini-index.")
     if "wordpress" in outputs and not (5 <= len(ep.get("faq", [])) <= 8):
         warnings.append("Aim for 5–8 FAQ entries.")
+    if "wordpress" in outputs and ep.get("article"):
+        art = ep["article"]
+        if len(art.get("seo_title", "")) > 60:
+            warnings.append(f"seo_title is {len(art['seo_title'])} chars (aim for ≤ 60).")
+        if not art.get("meta_description"):
+            warnings.append("article.meta_description is missing.")
+        elif len(art["meta_description"]) > 155:
+            warnings.append(f"meta_description is {len(art['meta_description'])} chars (aim for ≤ 155).")
+        if not (3 <= len(art.get("tags", [])) <= 6):
+            warnings.append("Aim for 3–6 tags.")
+        if len(art.get("secondary_keyphrases", [])) > 4:
+            warnings.append("Use at most 4 secondary_keyphrases.")
+        kp = (art.get("focus_keyphrase") or "").lower()
+        if not kp:
+            warnings.append("article.focus_keyphrase is missing.")
+        elif kp not in (ep["video"].get("title", "") + " " + plain(ep.get("answer_short", ""))).lower():
+            warnings.append("focus_keyphrase appears neither in the title nor in the first paragraph.")
     e, w = validate_chapters(ep.get("chapters", []), ep["video"].get("duration_seconds"))
     errors += e
     warnings += w

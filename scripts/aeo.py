@@ -32,6 +32,8 @@ def main(argv=None):
         s.add_argument("--outputs", help="comma-separated: " + ",".join(L.OUTPUT_FILES))
     sub.choices["render"].add_argument("--layout", choices=list(L.DESCRIPTION_LAYOUT_FILES), default="classic",
                                        help="YouTube description layout; 'merged' writes youtube-description.merged.txt")
+    sub.choices["render"].add_argument("--article", choices=["classic", "v2"], default="classic",
+                                       help="article variant; 'v2' writes article.v2.wp.html + wp-post-fields.v2.json")
     w = sub.add_parser("wp-draft"); w.add_argument("dir"); w.add_argument("--config"); w.add_argument("--brand")
     m = sub.add_parser("info"); m.add_argument("url")
     sub.add_parser("status")
@@ -62,7 +64,7 @@ def main(argv=None):
         d = Path(a.dir)
         outputs = [o.strip() for o in a.outputs.split(",") if o.strip()] if getattr(a, "outputs", None) else None
         if a.cmd == "render":
-            out = L.render_package(d, brand, outputs, a.layout)
+            out = L.render_package(d, brand, outputs, a.layout, a.article)
         elif a.cmd == "validate":
             out = L.validate_package(d, brand, outputs)
             L.write_review(d, brand, out)

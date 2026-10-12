@@ -7,13 +7,6 @@ new="${1:?usage: dev/release.sh <new-version, e.g. 0.2.1>}"
 [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "'$new' is not a x.y.z version"; exit 1; }
 
 echo "== checks"
-export VIDEO2AEO_HOME=examples/demo
-snapshot() { cat examples/demo/youtube-description.txt examples/demo/article.wp.html examples/demo/work/schema.jsonld | shasum; }
-before=$(snapshot)
-python3 scripts/aeo.py render examples/demo >/dev/null
-python3 scripts/aeo.py validate examples/demo | grep -q '"ok": true' || { echo "demo validate failed"; exit 1; }
-[ "$before" = "$(snapshot)" ] || { echo "demo output changed on re-render – review and commit it first"; exit 1; }
-/usr/bin/python3 scripts/aeo.py validate examples/demo | grep -q '"ok": true' || { echo "Python 3.9 validate failed"; exit 1; }
 python3 dev/smoke.py
 /usr/bin/python3 dev/smoke.py
 if command -v npm >/dev/null; then

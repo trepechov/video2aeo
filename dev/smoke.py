@@ -4,6 +4,7 @@ Smoke checks for the setup flow and the description footer/promo rendering (dev-
 Runs against a temporary VIDEO2AEO_HOME, so it never touches ~/.video2aeo/. Python 3.9+, stdlib only.
 
   python3 dev/smoke.py          # prints "smoke: N checks ok" or the first failure
+  python3 dev/smoke.py --write-article FILE   also copy the rendered test article (for the block validator)
 """
 import json
 import os
@@ -16,7 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp(prefix="video2aeo-smoke-"))
 os.environ["VIDEO2AEO_HOME"] = str(TMP / "home")
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "dev"))
 import aeo_lib as L  # noqa: E402
+import fixture  # noqa: E402
 
 checks = 0
 
@@ -97,8 +100,8 @@ check("{{SCHEDULE}}" in L._promo_and_footer(desc(footer="x {{SCHEDULE}}"))[1], "
 # --- validator with the promo at the top (incl. a promo that contains a separator) ------------------
 import shutil  # noqa: E402
 ep_dir = TMP / "ep"
-shutil.copytree(ROOT / "examples/demo", ep_dir)
-brand = L.load_brand(ROOT / "examples/demo/brand.json")
+fixture.build(ep_dir)
+brand = L.load_brand(ep_dir / "brand.json")
 for promo in ("👉 Offer: https://example.org/a", f"Line 1\n{L.DESC_SEP}\nLine 2"):
     brand["description"].update(promo=promo, promo_position="top")
     L.render_package(ep_dir, brand)
@@ -109,7 +112,7 @@ for promo in ("👉 Offer: https://example.org/a", f"Line 1\n{L.DESC_SEP}\nLine 
     check(not any("direct answer" in w for w in res["warnings"]), f"answer check confused by promo: {res['warnings']}")
 brand["description"].update(promo="ADS", promo_position="end")
 L.render_package(ep_dir, brand)
-check("ADS" in (ep_dir / "youtube-description.txt").read_text(encoding="utf-8"), "promo at end (demo footer)")
+check("ADS" in (ep_dir / "youtube-description.txt").read_text(encoding="utf-8"), "promo at end")
 
 # --- fixed header: always first, before a top promo and the answer ---------------------------------
 brand["description"].update(header="📢 HEADER LINE", promo="TOPADS", promo_position="top")
@@ -122,13 +125,11 @@ check(res["ok"] and not any("direct answer" in w for w in res["warnings"]), f"va
 
 # --- per-command outputs: the YouTube command works without article content -----------
 yt_dir = TMP / "yt-only"
-shutil.copytree(ROOT / "examples/demo", yt_dir)
+fixture.build(yt_dir)
 ep = L.load_json(yt_dir / "work/episode.json")
 for key in ("sections", "faq", "key_takeaways"):
     ep.pop(key, None)
 (yt_dir / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
-for name in ("article.wp.html", "wp-post-fields.json", "work/schema.jsonld"):
-    (yt_dir / name).unlink()
 r = L.render_package(yt_dir, brand)
 check(r["written"] == ["youtube-description.txt"], f"auto outputs must be youtube only: {r}")
 check(not (yt_dir / "article.wp.html").exists(), "extra outputs rendered")
@@ -146,7 +147,7 @@ check(all(f.startswith("work/") for f in raw["files"]) and (yt_dir / "work/trans
 # --- older flat folders (everything in one folder) are still read ----------------------------------
 flat = TMP / "flat"
 flat.mkdir()
-for f in (ROOT / "examples/demo/work").iterdir():
+for f in (ep_dir / "work").iterdir():
     (flat / f.name).write_bytes(f.read_bytes())
 check(L.render_package(flat, brand)["written"][0] == "youtube-description.txt", "flat layout not rendered")
 check(L.validate_package(flat, brand)["ok"], "flat layout not validated")
@@ -166,5 +167,12 @@ check(N._yt_cookie_args() == ["--cookies", "/x/c.txt"], "cookies_file must win")
 cfgp.write_text('{"wordpress": {}}', encoding="utf-8")
 check(N._yt_cookie_args() == [], "no youtube config -> no cookie args")
 cfgp.unlink()
+
+if "--write-article" in sys.argv:
+    out = Path(sys.argv[sys.argv.index("--write-article") + 1])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    brand["description"].update(promo="", promo_position="end")
+    L.render_package(ep_dir, brand, ["wordpress"])
+    out.write_bytes((ep_dir / "article.wp.html").read_bytes())
 
 print(f"smoke: {checks} checks ok")

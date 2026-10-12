@@ -13,7 +13,7 @@ Content language is **Bulgarian**; code, comments and docs are English.
   `config.json`); `config/` holds generic defaults with `{{PLACEHOLDERS}}`.
 - Developer brand files and the pre-neutral snapshot live in git-ignored `private/` (see `private/BRAND-NOTES.md`).
   Read them for context; never copy their content into tracked files.
-- Examples use the fictional demo brand in `examples/demo/`.
+- No example folders are kept in the repo; tests build a fictional episode on the fly (`dev/fixture.py`).
 
 ## Read first
 - `docs/plugin-build-plan.md` – architecture, instruction layers, roadmap (phase 1a manual MVP → 1b automation → phase 2 WordPress plugin → phase 3), decisions.
@@ -27,7 +27,6 @@ Content language is **Bulgarian**; code, comments and docs are English.
 - `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
   `VIDEO2AEO_HOME`). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
 - `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.video2aeo/` files.
-- `examples/demo/` – golden example (fictional brand + episode). Must stay valid.
 - `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`
   (setup flow and footer/promo rendering against a temp `VIDEO2AEO_HOME`). Not shipped.
 - Setup: every user-facing skill preflights with the `setup_status` tool; the `setup` skill interviews the user and
@@ -53,10 +52,7 @@ server and fails (`${CLAUDE_PLUGIN_ROOT}` unset) – that is expected.
 ## Checks to run after any change
 ```bash
 claude plugin validate .
-export VIDEO2AEO_HOME=examples/demo
-python3 scripts/aeo.py render examples/demo && python3 scripts/aeo.py validate examples/demo   # expect ok: true
-/usr/bin/python3 scripts/aeo.py validate examples/demo                                          # Python 3.9 still works
-python3 dev/smoke.py && /usr/bin/python3 dev/smoke.py                                          # setup + promo checks
+python3 dev/smoke.py && /usr/bin/python3 dev/smoke.py                                          # setup, render + validate on the fictional fixture (3.14 and 3.9)
 (cd dev && npm i && npm run validate-blocks)                                                  # expect invalid: 0, first block core/embed
 grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules} --exclude=package-lock.json .   # expect no output
 ```
@@ -73,7 +69,7 @@ The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python
 ## Status (12 Oct 2026)
 v0.1 moved from a cloud session to the local Mac and made brand-neutral (plugin named `yt-aeo`). 0.4.0 renamed it to **Video2AEO** (`video2aeo`, settings `~/.video2aeo/`); the code still reads
 the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing.
-Demo render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
+Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
 Desktop Cowork, live `fetch_transcript`, `wp_push_draft`.
 
 ## Next steps (full list: `docs/plugin-build-plan.md` §3)

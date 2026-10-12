@@ -3,7 +3,7 @@
   "private": true,
   "description": "Developer-only checks. Not used by the plugin at runtime.",
   "scripts": {
-    "validate-blocks": "node validate-blocks.cjs ../examples/demo/article.wp.html"
+    "validate-blocks": "python3 smoke.py --write-article .smoke/article.wp.html && node validate-blocks.cjs .smoke/article.wp.html"
   },
   "devDependencies": {
     "@wordpress/blocks": "^16.2.0",

@@ -150,10 +150,8 @@ The repo root is the plugin. Develop in Claude Code, which loads skills, agents 
 ```bash
 claude --plugin-dir .                              # load locally
 claude plugin validate .                           # manifest/structure
-export VIDEO2AEO_HOME=examples/demo                   # fictional demo brand
-python3 scripts/aeo.py render examples/demo && python3 scripts/aeo.py validate examples/demo
-python3 dev/smoke.py                               # setup flow + promo/footer rendering (temp settings folder)
-cd dev && npm i && npm run validate-blocks         # WordPress's own block validator on the rendered article
+python3 dev/smoke.py                               # setup flow, rendering and validation on a built-in fictional episode (temp folders)
+cd dev && npm i && npm run validate-blocks         # WordPress's own block validator on that rendered article
 ```
 
 Test the installed plugin in the Claude desktop app:
@@ -176,6 +174,6 @@ git add -A && git commit -m "video2aeo 0.3.1" && git push
 
 Users then see the new version under Settings → Plugins and click **Update**.
 
-`examples/demo/` is the golden example (fictional brand and episode): any renderer change must keep it valid with 0
-invalid blocks. Real brand files belong in the git-ignored `private/` folder, never in commits.
+The checks build a fictional episode on the fly (`dev/fixture.py`); no example folder is kept in the repository. Any
+renderer change must keep it valid with 0 invalid blocks. Real brand files belong in the git-ignored `private/` folder, never in commits.
 See `docs/plugin-build-plan.md` for the roadmap.

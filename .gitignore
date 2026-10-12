@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .DS_Store
 dev/node_modules/
+dev/.smoke/
 *.plugin
 episodes/
 .env

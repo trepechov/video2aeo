@@ -67,8 +67,8 @@ the `episode` skill runs the same steps and gates inline; outputs are produced a
 | Code rules (cannot be overridden) | `scripts/aeo_lib.py` | YouTube limits, chapter rules, block markup, FAQ/schema parity, number traceability |
 
 The orchestrator reads the layers in that order and passes them to every agent. Different users (brands) need only a
-different `~/.video2aeo/` folder. Developers point `VIDEO2AEO_HOME` at another folder to switch brands (the demo checks use
-`VIDEO2AEO_HOME=examples/demo`).
+different `~/.video2aeo/` folder. Developers point `VIDEO2AEO_HOME` at another folder to switch brands (the dev checks use a
+temporary `VIDEO2AEO_HOME`).
 
 Principles: **LLM for language, code for rules**; one structured source (`episode.json`) so description, article and
 schema can't drift; nothing is ever published automatically; promo text only from the approved brand config;
@@ -79,10 +79,10 @@ schema can't drift; nothing is ever published automatically; promo text only fro
 ### 3.0 What exists (v0.1)
 
 Delivered in this repo (the repo root is the plugin root): manifest, 4 skills, 3 agents, local MCP server, renderer,
-validator, optional subtitle download, optional WP draft push, generic brand config + glossary, fictional demo golden
-example (`examples/demo/`), WordPress block validator for development.
+validator, optional subtitle download, optional WP draft push, generic brand config + glossary, fictional test fixture
+(`dev/fixture.py`), WordPress block validator for development.
 
-Tested on the Mac (12 Oct 2026): demo render + validate `ok: true` on Python 3.14 and 3.9; 65 Gutenberg blocks,
+Tested on the Mac (12 Oct 2026): fixture render + validate `ok: true` on Python 3.14 and 3.9; 65 Gutenberg blocks,
 **0 invalid**, embed first; transcript import from the copy-paste format. In the cloud session: rolling auto-caption
 VTT import (dedup), validator negative tests, MCP handshake (raw stdio).
 
@@ -91,7 +91,7 @@ Not yet tested: agents + `video2aeo` MCP server in Desktop Cowork; live `fetch_t
 ### 3.1 Local dev loop (every change)
 
 - Claude Code: `claude --plugin-dir .` (loads skills, agents, MCP) · `claude plugin validate .` ·
-  `VIDEO2AEO_HOME=examples/demo python3 scripts/aeo.py render examples/demo && VIDEO2AEO_HOME=examples/demo python3 scripts/aeo.py validate examples/demo` ·
+  `python3 dev/smoke.py` ·
   `(cd dev && npm run validate-blocks)`.
 - Claude Desktop: bump `version` in `.claude-plugin/plugin.json` → install the new version (GitHub marketplace once
   set up; until then `dev/package.sh` → Settings → Plugins: remove the old plugin, upload
