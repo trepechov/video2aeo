@@ -55,8 +55,11 @@ Fill every `{{…}}` placeholder – the validator lists any that remain. Set `Y
 
 ## Setup
 
-1. Install the plugin in the Claude desktop app (from the GitHub marketplace once published; until then Customize →
-   Plugins → Upload plugin with the file from `dev/package.sh`).
+1. Install the plugin from GitHub:
+   - Claude desktop app: Customize → Plugins → add marketplace `trepechov/yt-aeo-helper` → install **yt-aeo**.
+   - Claude Code: `/plugin install yt-aeo --marketplace trepechov/yt-aeo-helper`
+     (or `claude plugin marketplace add trepechov/yt-aeo-helper && claude plugin install yt-aeo@yt-aeo-helper`).
+   Updates: bump `version` in `.claude-plugin/plugin.json` and `marketplace.json`, push, then update the plugin.
 2. Python 3.9+ on the computer.
 3. Create `~/.yt-aeo/` with the brand files above (the `setup` skill walks you through it).
 4. Optional: subtitle download – install into the interpreter the desktop app uses (on macOS usually `/usr/bin/python3`,
@@ -80,7 +83,7 @@ cd dev && npm i && npm run validate-blocks         # WordPress's own block valid
 
 Test the installed plugin in the Claude desktop app:
 
-1. Bump `version` in `.claude-plugin/plugin.json`.
+1. Bump `version` in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
 2. `dev/package.sh` → `dist/yt-aeo-<version>.plugin`.
 3. Customize → Plugins: remove the old version, upload the new file.
 4. Open a Cowork task with a working folder and run `/yt-aeo:aeo-episode`.
