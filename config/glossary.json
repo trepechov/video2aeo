@@ -1,17 +1,9 @@
 {
   "_comment": "Generic Bulgarian ASR fixes and canonical spellings. Brand-specific names, terms and sponsor-read markers go in ~/.video2aeo/glossary.json (same keys; entries are added to these). Keys in `fixes` are wrong forms seen in YouTube auto-captions; values are correct forms. Extend after every episode (Gate A).",
   "fixes": {
-    "недвижини": "недвижими",
-    "наимодатели": "наемодатели",
-    "подежспособност": "платежоспособност",
-    "платежеспособност": "платежоспособност",
-    "непредоспособни": "неплатежоспособни",
-    "неподеспособни": "неплатежоспособни",
     "Зад колисите": "Зад кулисите",
-    "побателна способност": "покупателна способност",
-    "власт имаще": "властимащите",
-    "милионаро": "милиона евро"
+    "власт имаще": "властимащите"
   },
-  "names": ["Световната банка", "Европейската централна банка", "ДДС", "БВП", "НСИ", "БНБ"],
+  "names": ["ЕС", "ДДС", "БВП", "НСИ"],
   "sponsor_read_markers": []
 }

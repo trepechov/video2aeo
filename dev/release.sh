@@ -8,7 +8,7 @@ new="${1:?usage: dev/release.sh <new-version, e.g. 0.2.1>}"
 
 echo "== checks"
 export VIDEO2AEO_HOME=examples/demo
-snapshot() { cat examples/demo/youtube-description.txt examples/demo/article.wp.html examples/demo/facebook-post.txt examples/demo/work/schema.jsonld | shasum; }
+snapshot() { cat examples/demo/youtube-description.txt examples/demo/article.wp.html examples/demo/work/schema.jsonld | shasum; }
 before=$(snapshot)
 python3 scripts/aeo.py render examples/demo >/dev/null
 python3 scripts/aeo.py validate examples/demo | grep -q '"ok": true' || { echo "demo validate failed"; exit 1; }

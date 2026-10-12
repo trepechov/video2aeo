@@ -21,23 +21,23 @@ for an LLM, however good it is.
 ## Writing citable sentences
 
 - Weak (auto): „ами тука нали общо взето значи ако така погледнем…“
-- Strong (edited): „Продажната цена трябва да се определя на база реализирани сделки, а не на база обявени офертни цени.“
+- Strong (edited): „Новият навик се затвърждава средно за 66 дни, а не за 21, както често се твърди.“
 - Each key sentence names its subject (no „това“, „той“ without an antecedent) and keeps its number + date.
 
 ## Chapters
 
-Weak: `00:00 Начало / 07:20 Цени / 18:10 Купувачи / 31:00 Заключение`
-[knowledge-chapters] Strong: `00:00 Как се определя реалната пазарна цена / 07:20 Защо офертната цена подвежда продавачите / …`
+Weak: `00:00 Начало / 07:20 Навици / 18:10 Мотивация / 31:00 Заключение`
+[knowledge-chapters] Strong: `00:00 Колко време отнема да изградим навик / 07:20 Защо мотивацията не стига / …`
 Never: Интро, Разговор, Пазар, Съвети, Финал. One chapter per distinct question, ~1 per 2–4 min.
 YouTube rules: first at 00:00, ≥ 3 chapters, ascending, each ≥ 10 s; titles ≤ 70 chars (≤ 49 show on hover).
 
 ## Titles
 
-- Video answers one question → use the question („Ще паднат ли цените на имотите в България?“).
-- List / analysis / framework → clear statement („3 сигнала, че имотът е надценен“).
+- Video answers one question → use the question („Струва ли си да учим програмиране след 40?“).
+- List / analysis / framework → clear statement („3 признака, че е време да смените работата си“).
 - [question-titles] Rule: phrase it the way people **ask an AI or search**. Keep the key question in the first ~60 characters;
   series name and episode number go at the end („… | <series> Еп. 8“).
-- Interviews: the expert answer is the asset – „Как банките оценяват кандидат за ипотека? Разговор с кредитен директор“,
+- Interviews: the expert answer is the asset – „Как работодателите оценяват кандидат без опит? Разговор с HR директор“,
   not „Подкаст с Иван Иванов“.
 
 ## Description

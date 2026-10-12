@@ -4,8 +4,8 @@ description: >
   This skill should be used when the user gives a YouTube URL of a new podcast/video episode and asks to "process the
   episode", "prepare the YouTube description", "make the AEO description with chapters", "download the subtitles and edit
   the transcript", or runs /video2aeo:episode <url>. It is the main command: subtitles → edited transcript → knowledge map
-  (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article and
-  the Facebook post are separate follow-up commands (/video2aeo:wp-article, /video2aeo:fb-post).
+  (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
+  a separate follow-up command (/video2aeo:wp-article).
 metadata:
   version: "0.4.0"
 ---
@@ -38,10 +38,9 @@ before writing `episode.json`.
 ## Episode folder
 
 ```
-episodes/<yyyy-mm>-<series-short>-<nn>-<slug>/     e.g. episodes/2025-09-qw-08-naem-ili-pokupka
+episodes/<yyyy-mm>-<series-short>-<nn>-<slug>/     e.g. episodes/2026-01-show-12-episode-slug
 ├── youtube-description.txt      ← paste-ready outputs, for the user (this command)
 ├── article.wp.html, wp-post-fields.json           (/video2aeo:wp-article)
-├── facebook-post.txt                              (/video2aeo:fb-post)
 └── work/                        ← working files the user does not need to read
     ├── episode.json  transcript.raw.json  transcript.raw.txt  transcript.edited.md
     └── schema.jsonld  review.md  wp-result.json
@@ -126,14 +125,14 @@ and forecasts are attributed. On approval set `gates.youtube`.
 
 - Tell the user to paste `youtube-description.txt` into YouTube Studio → Details → Description, set the chosen title,
   save, and check that chapters appear on the progress bar.
-- Next commands, same episode folder: `/video2aeo:wp-article` (knowledge-base article), `/video2aeo:fb-post` (Facebook post).
+- Next commands, same episode folder: `/video2aeo:wp-article` (knowledge-base article).
 
 Finish with one short message: what is ready, which approval is open, and the one next action.
 
 ## Never
 
 - Never publish anything.
-- Never invent numbers, sources, quotes or promo/investment claims; never "correct" a speaker's number silently –
+- Never invent numbers, sources, quotes or promo/commercial claims; never "correct" a speaker's number silently –
   add an editorial note instead.
 - Never use generic chapter titles (Интро, Разговор, Финал …).
 - Never put opinions or forecasts in answers unless clearly attributed.

@@ -120,22 +120,22 @@ check(text.startswith("📢 HEADER LINE") and text.index("TOPADS") < text.index(
 res = L.validate_package(ep_dir, brand)
 check(res["ok"] and not any("direct answer" in w for w in res["warnings"]), f"validate with header: {res}")
 
-# --- per-command outputs: the YouTube command works without article or Facebook content -----------
+# --- per-command outputs: the YouTube command works without article content -----------
 yt_dir = TMP / "yt-only"
 shutil.copytree(ROOT / "examples/demo", yt_dir)
 ep = L.load_json(yt_dir / "work/episode.json")
-for key in ("sections", "faq", "key_takeaways", "facebook"):
+for key in ("sections", "faq", "key_takeaways"):
     ep.pop(key, None)
 (yt_dir / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
-for name in ("article.wp.html", "facebook-post.txt", "wp-post-fields.json", "work/schema.jsonld"):
+for name in ("article.wp.html", "wp-post-fields.json", "work/schema.jsonld"):
     (yt_dir / name).unlink()
 r = L.render_package(yt_dir, brand)
 check(r["written"] == ["youtube-description.txt"], f"auto outputs must be youtube only: {r}")
-check(not (yt_dir / "article.wp.html").exists() and not (yt_dir / "facebook-post.txt").exists(), "extra outputs rendered")
+check(not (yt_dir / "article.wp.html").exists(), "extra outputs rendered")
 res = L.validate_package(yt_dir, brand)
 check(res["ok"] and res["outputs_checked"] == ["youtube"], f"youtube-only validate: {res}")
-r = L.render_package(yt_dir, brand, ["wordpress", "facebook"])
-check(r["written"] == [] and len(r["skipped"]) == 2, f"incomplete outputs must be skipped, not half-written: {r}")
+r = L.render_package(yt_dir, brand, ["wordpress"])
+check(r["written"] == [] and len(r["skipped"]) == 1, f"incomplete outputs must be skipped, not half-written: {r}")
 check(not L.validate_package(yt_dir, brand, ["wordpress"])["ok"], "wordpress validate must fail without sections/faq")
 L.write_review(yt_dir, brand, res)
 check((yt_dir / "work/review.md").exists() and not (yt_dir / "review.md").exists(), "review.md belongs in work/")

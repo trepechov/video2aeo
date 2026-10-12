@@ -4,7 +4,7 @@ video2aeo command line (same functions as the local MCP tools).
 
   python3 aeo.py transcript <youtube-url> <episode-dir> [--lang xx]   download subtitles (default: brand language)
   python3 aeo.py import <transcript-file> <episode-dir>                 parse a pasted/uploaded transcript
-  python3 aeo.py render <episode-dir> [--outputs youtube,wordpress,facebook] [--brand local-brand.json]
+  python3 aeo.py render <episode-dir> [--outputs youtube,wordpress] [--brand local-brand.json]
                                                                         episode.json -> the requested outputs (default: all that have content)
   python3 aeo.py validate <episode-dir> [--outputs ...] [--brand ...]   checks + work/review.md
   python3 aeo.py status                                                  is the one-time brand setup done?
@@ -30,6 +30,8 @@ def main(argv=None):
     for name in ("render", "validate"):
         s = sub.add_parser(name); s.add_argument("dir"); s.add_argument("--brand")
         s.add_argument("--outputs", help="comma-separated: " + ",".join(L.OUTPUT_FILES))
+    sub.choices["render"].add_argument("--layout", choices=list(L.DESCRIPTION_LAYOUT_FILES), default="classic",
+                                       help="YouTube description layout; 'merged' writes youtube-description.merged.txt")
     w = sub.add_parser("wp-draft"); w.add_argument("dir"); w.add_argument("--config"); w.add_argument("--brand")
     m = sub.add_parser("info"); m.add_argument("url")
     sub.add_parser("status")
@@ -60,7 +62,7 @@ def main(argv=None):
         d = Path(a.dir)
         outputs = [o.strip() for o in a.outputs.split(",") if o.strip()] if getattr(a, "outputs", None) else None
         if a.cmd == "render":
-            out = L.render_package(d, brand, outputs)
+            out = L.render_package(d, brand, outputs, a.layout)
         elif a.cmd == "validate":
             out = L.validate_package(d, brand, outputs)
             L.write_review(d, brand, out)

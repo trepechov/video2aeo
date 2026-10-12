@@ -1,8 +1,19 @@
 # Video2AEO
 
+```text
+  ┌──────────────────────┐              ┌────────────────────────────┐
+  │                      │              │ Q  How do I start a show?  │
+  │          ▶           │              │ A  Pick one topic, one mic │
+  │                      │   ────────▶  │    and a weekly slot.      │
+  │ ▁▂▃▅▇▅▃▂▁▂▃▅▇▅▃▂▁▂▃▅ │   video2aeo  │ 00:00  Chapters            │
+  │ ●━━━━━━━━━──── 12:04 │              │ </>    Article + FAQ       │
+  └──────────────────────┘              └────────────────────────────┘
+       one episode in                      answers AI can quote
+```
+
 **One video in, AEO content out.** Video2AEO (plugin ID `video2aeo`) takes a YouTube episode and produces
-answer-ready content for every platform – the YouTube description first, then the WordPress article that covers all
-questions and answers, then social posts. Written for human readers, found by Google and AI answers.
+answer-ready content – the YouTube description first, then the WordPress article that covers all questions and
+answers. Written for human readers, found by Google and AI answers.
 
 A Claude plugin that turns a podcast/video episode transcript into an AEO package, one command per output:
 
@@ -10,18 +21,16 @@ A Claude plugin that turns a podcast/video episode transcript into an AEO packag
 |---|---|---|
 | `/video2aeo:episode <url>` | The knowledge map and the **YouTube description** with chapters and title | Main command – run first |
 | `/video2aeo:wp-article` | The **WordPress (Gutenberg) article** with the video embedded first, FAQ, schema and SEO fields | After `episode`, when the article is wanted |
-| `/video2aeo:fb-post` | The **Facebook post** teaser | After `episode`, when the post is wanted |
 
-More outputs (Instagram, newsletter …) follow the same pattern: one instruction file, one command.
+More outputs (social posts, newsletter …) will follow the same pattern: one instruction file, one command.
 
 Each episode gets one folder. What you paste is in the folder itself; everything else is in `work/`:
 
 ```
-episodes/2026-09-dk-36-naem-ili-pokupka/
+episodes/<yyyy-mm>-<series>-<nn>-<slug>/        e.g. episodes/2026-01-show-12-episode-slug/
 ├── youtube-description.txt     AEO description: direct answer → questions → article link → chapters → footer
 ├── article.wp.html             Gutenberg article: video embed first, answer, takeaways, chapters, FAQ, transcript, JSON-LD
 ├── wp-post-fields.json         Title (= video title), slug, SEO title, meta description, keyphrase, category, tags
-├── facebook-post.txt           Hook, key points, question, links, hashtags
 └── work/                       working files – not meant to be read
     ├── episode.json            the knowledge map – single source of truth for every output
     ├── transcript.raw.txt / .json, transcript.edited.md
@@ -33,16 +42,16 @@ download and WordPress draft push exist but are optional (see `docs/plugin-build
 
 ## Who does what
 
-- **Claude writes all text** (transcript edit, questions, chapters, description, article, FAQ, posts), guided by the
+- **Claude writes all text** (transcript edit, questions, chapters, description, article, FAQ), guided by the
   instruction files in `instructions/` (one per output) and the agents.
 - **Scripts do the mechanical parts** – import transcripts, assemble formats, enforce limits. The marketer never runs them by hand.
 - **People approve**: Gate A (facts, names, chapters, title) in `episode`, then one approval per output
-  (description, article, Facebook post).
+  (description, article).
 
 ## Instructions
 
 `instructions/` holds the plugin's general instructions – `aeo-rules.md` (principles), `youtube-description.md`,
-`wordpress-article.md` (structure, SEO fields, tags, internal links), `facebook-post.md`, and `episode-schema.md`.
+`wordpress-article.md` (structure, SEO fields, tags, internal links), and `episode-schema.md`.
 Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructions/README.md`.
 
 ## Components
@@ -51,7 +60,6 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 |---|---|---|
 | Skill | `episode` | `/video2aeo:episode` – transcript → knowledge map → YouTube description |
 | Skill | `wp-article` | `/video2aeo:wp-article` – article for an episode |
-| Skill | `fb-post` | `/video2aeo:fb-post` – Facebook post for an episode |
 | Skill | `setup` | One-time setup on the marketer's computer |
 | Agent | `transcript-editor` | Raw transcript → edited transcript |
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
@@ -133,7 +141,7 @@ still read if `~/.video2aeo/` does not exist.
 
 ## Usage
 
-In a Cowork task with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript `.txt`; then `/video2aeo:wp-article` and `/video2aeo:fb-post` for the other outputs.
+In a Cowork task with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript `.txt`; then `/video2aeo:wp-article` for the article.
 
 ## Developing (Claude Code) and testing (Claude Desktop)
 

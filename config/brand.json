@@ -1,5 +1,5 @@
 {
-  "_comment": "Generic defaults. Put the real brand in ~/.video2aeo/brand.json (any subset of these keys; it is deep-merged over this file) – never commit it. The setup skill writes it. Values marked {{...}} must be filled (channel, topics) or are blanked when skipped (organization name/logo, schedule, disclaimer_url, social_links); the validator lists any that remain. Footer tokens: {SCHEDULE}, {DISCLAIMER_URL}, {SOCIAL_LINKS} are filled from description.* (a line whose value is empty is dropped); description.header (verbatim, optional) is always the first thing in the description; {PROMO} is where description.promo (links, messages, ads) goes when promo_position is 'end' – 'top' puts it above the answer. facebook.footer (optional, verbatim) is appended to the Facebook post; facebook.*_label are the link labels.",
+  "_comment": "Generic defaults. Put the real brand in ~/.video2aeo/brand.json (any subset of these keys; it is deep-merged over this file) – never commit it. The setup skill writes it. Values marked {{...}} must be filled (channel, topics) or are blanked when skipped (organization name/logo, schedule, disclaimer_url, social_links); the validator lists any that remain. Footer tokens: {SCHEDULE}, {DISCLAIMER_URL}, {SOCIAL_LINKS} are filled from description.* (a line whose value is empty is dropped); description.header (verbatim, optional) is always the first thing in the description; {PROMO} is where description.promo (links, messages, ads) goes when promo_position is 'end' – 'top' puts it above the answer.",
   "language": "bg",
   "language_name": "Bulgarian",
   "channel": "{{CHANNEL_NAME}}",
@@ -29,7 +29,7 @@
     "schedule": "{{SCHEDULE}}",
     "disclaimer_url": "{{DISCLAIMER_URL}}",
     "social_links": "{{SOCIAL_LINKS}}",
-    "footer": "🕔 Нов епизод {SCHEDULE}.\n📩 Пишете въпросите си в коментарите – най-интересните ще включим в следващия епизод.\n_______________________________________\n{PROMO}\n_______________________________________\nСъдържанието е с информационна цел и не представлява финансов, правен или данъчен съвет.\nПълен отказ от отговорност: {DISCLAIMER_URL}\n_______________________________________\n👍 Харесайте, споделете и се абонирайте.\n📲 {SOCIAL_LINKS}"
+    "footer": "🕔 Нов епизод {SCHEDULE}.\n📩 Пишете въпросите си в коментарите – най-интересните ще включим в следващия епизод.\n_______________________________________\n{PROMO}\n_______________________________________\nСъдържанието е с информационна цел. Мненията на гостите са лични.\nПълен отказ от отговорност: {DISCLAIMER_URL}\n_______________________________________\n👍 Харесайте, споделете и се абонирайте.\n📲 {SOCIAL_LINKS}"
   },
   "article": {
     "jsonld_in_content": true,
@@ -44,16 +44,11 @@
       "authors": "За авторите",
       "related": "Още отговори от Базата знания"
     },
-    "disclaimer": "Материалът е с информационна цел и не представлява финансов, правен или данъчен съвет. Мненията и прогнозите на гостите са лични и са отбелязани като такива."
+    "disclaimer": "Материалът е с информационна цел. Мненията и прогнозите на гостите са лични и са отбелязани като такива."
   },
   "currency": {
     "eur_rate": 1.95583,
     "euro_since": "2026-01-01",
     "rule": "Sums in лева from before 2026 keep the original figure and add the euro equivalent in brackets, e.g. „94 млрд. лв. (≈ 48,1 млрд. €)“."
-  },
-  "facebook": {
-    "article_label": "📖 Пълният отговор:",
-    "watch_label": "▶ Гледайте епизода:",
-    "footer": ""
   }
 }

@@ -28,6 +28,28 @@ The brand footer (promo, disclaimer, socials) is necessary but is not the conten
 Why this order: the first lines are what search results, the collapsed description and AI answers quote – so the
 answer comes first; questions and chapters give the topic map; the footer is last because it is identical in every episode.
 
+## Layout B – merged questions and chapters (`--layout merged`)
+
+Rendered to `youtube-description.merged.txt` next to the default file; it never replaces `youtube-description.txt`.
+Steps 3 and 5 of the fixed order become one list, „⏱️ Въпроси и глави:“, so a question is not written twice:
+
+```
+00:00 Наем или покупка на жилище – кое е по-доброто решение?
+Няма универсален отговор: решението зависи от личния контекст, а …
+02:45 Къде да живея и къде да инвестирам: два различни въпроса
+```
+
+- Every `questions[]` item is attached to the chapter that contains its `chapter_t`; its text becomes the chapter line
+  and its `a` follows on the next line. Chapters without a question stay a single line.
+- A question longer than 70 characters would break the chapter limit: the chapter keeps its knowledge title and the
+  answer still follows. Prefer writing questions ≤ 70 characters.
+- The answer line is one self-contained sentence (≈ 150–220 characters: subject named, number with date and speaker,
+  opinions attributed). It is the same text as `questions[].a`, so the article and the description agree.
+- The separate „Основни въпроси“ bullets are dropped; everything else (header, answer, context, article link,
+  freshness note, people, footer, hashtags) is unchanged.
+- Verify once on an unlisted video that YouTube still builds the chapters from timestamp lines that are interleaved
+  with answer lines, before making this the default.
+
 ## Chapters
 
 - First chapter `t: 0`; at least 3; strictly ascending; each ≥ 10 s; one per distinct question; roughly 1 per 2–4
@@ -38,7 +60,7 @@ answer comes first; questions and chapters give the topic map; the footer is las
 - Do not start a chapter inside a sponsor read; let the previous chapter cover it.
 - Timestamps come from the transcript stamps, rounded down to the start of the sentence that opens the topic.
 
-## Title (shared with the article and the Facebook post)
+## Title (shared with the article)
 
 Offer three options at Gate A: (1) the main question, (2) a statement or list, (3) the expert framing with the guest.
 Phrase it the way people ask an AI or search; key question in the first ~60 characters, series name and episode
@@ -57,7 +79,7 @@ The chosen title is both the YouTube title and the WordPress article title.
 - Opinions and forecasts are attributed („според …“); numbers keep their date and speaker.
 - Pre-2026 лева sums keep the figure and add „(≈ X €)“ at 1,95583.
 - Sponsor reads are not knowledge: no sponsor content in the answer, questions or chapters.
-- Promo and investment claims only from the approved brand config.
+- Promo and commercial claims only from the approved brand config.
 
 ## Extending
 

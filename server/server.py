@@ -18,10 +18,10 @@ import aeo_net as N  # noqa: E402
 
 SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
-OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wordpress", "facebook"]},
+OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wordpress"]},
            "description": "Which outputs to handle. Omit for every output that already has content in episode.json. "
-                          "/video2aeo:episode passes [\"youtube\"], /video2aeo:wp-article [\"wordpress\"], /video2aeo:fb-post [\"facebook\"]."}
-DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-10-dk-08-danatsi"}
+                          "/video2aeo:episode passes [\"youtube\"], /video2aeo:wp-article [\"wordpress\"]."}
+DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-01-show-12-episode-slug"}
 TOOLS = [
     {"name": "setup_status",
      "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
@@ -59,7 +59,7 @@ TOOLS = [
                      "required": ["file", "episode_dir"]}},
     {"name": "render_package",
      "description": "Render work/episode.json into the requested outputs: youtube-description.txt, article.wp.html (Gutenberg) "
-                    "+ wp-post-fields.json + work/schema.jsonld, facebook-post.txt. Deterministic – never edit those files by hand; "
+                    "+ wp-post-fields.json + work/schema.jsonld. Deterministic – never edit those files by hand; "
                     "edit episode.json and re-render.",
      "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "outputs": OUTPUTS}, "required": ["episode_dir"]}},
     {"name": "validate_package",

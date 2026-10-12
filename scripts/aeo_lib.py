@@ -3,8 +3,8 @@ video2aeo core library (stdlib only).
 
 Deterministic parts of the pipeline – the LLM never does these:
   * transcript parsing (YouTube "MM:SS text" paste, VTT, SRT, JSON segments)
-  * rendering episode.json -> youtube-description.txt, article.wp.html (+ schema.jsonld, wp-post-fields.json),
-    facebook-post.txt – each output independently, so a command can render only its own file
+  * rendering episode.json -> youtube-description.txt, article.wp.html (+ schema.jsonld, wp-post-fields.json)
+    – each output independently, so a command can render only its own file
   * validation (YouTube limits, chapter rules, Gutenberg block balance, FAQ parity, placeholders)
 
 Episode folder layout: the paste-ready outputs sit in the folder itself, everything else (episode.json, transcripts,
@@ -44,11 +44,13 @@ GENERIC_CHAPTERS = {
 }
 YT_DESCRIPTION_LIMIT = 5000
 YT_DESCRIPTION_MARGIN = 100
-FB_HOOK_SOFT_LIMIT = 150  # heuristic: the feed cuts long posts behind „See more“, so the first line must carry the answer
+CHAPTER_TITLE_MAX = 70
 
 WORK_DIR = "work"
-OUTPUT_FILES = {"youtube": "youtube-description.txt", "wordpress": "article.wp.html", "facebook": "facebook-post.txt"}
-OUTPUT_ORDER = ("youtube", "wordpress", "facebook")
+OUTPUT_FILES = {"youtube": "youtube-description.txt", "wordpress": "article.wp.html"}
+# Alternative description layouts are written next to the default file and never replace it.
+DESCRIPTION_LAYOUT_FILES = {"classic": "youtube-description.txt", "merged": "youtube-description.merged.txt"}
+OUTPUT_ORDER = ("youtube", "wordpress")
 
 # ----------------------------------------------------------------------------
 # config
@@ -540,7 +542,32 @@ def _promo_and_footer(d: dict) -> tuple[str, str]:
     return promo, footer
 
 
-def render_description(ep: dict, brand: dict) -> str:
+def _qa_chapters(ep: dict) -> list[tuple[int, str, str | None]]:
+    """Merged layout: one (t, line, answer) per chapter. A question is attached to the chapter that contains its
+    `chapter_t` (the latest chapter starting at or before it); its text replaces the chapter title when it fits the
+    YouTube chapter limit, otherwise the knowledge title stays and the answer still follows."""
+    chapters = ep["chapters"]
+    by_idx: dict[int, dict] = {}
+    for q in ep.get("questions", []):
+        t = q.get("chapter_t")
+        if t is None:
+            continue
+        idx = max((i for i, c in enumerate(chapters) if c["t"] <= t), default=0)
+        by_idx.setdefault(idx, q)  # first question wins when two land in one chapter
+    rows = []
+    for i, c in enumerate(chapters):
+        q = by_idx.get(i)
+        if q:
+            qt = plain(q["q"]).strip()
+            rows.append((c["t"], qt if len(qt) <= CHAPTER_TITLE_MAX else plain(c["title"]), plain(q["a"]).strip()))
+        else:
+            rows.append((c["t"], plain(c["title"]), None))
+    return rows
+
+
+def render_description(ep: dict, brand: dict, layout: str = "classic") -> str:
+    """layout 'classic': question bullets + chapter list. 'merged': one list in which every question is a timestamped
+    chapter followed by its one-sentence answer (no separate question list, no repeated question text)."""
     vid = ep["video"]
     hours = (vid.get("duration_seconds") or 0) >= 3600
     out: list[str] = []
@@ -553,11 +580,19 @@ def render_description(ep: dict, brand: dict) -> str:
     out.append(plain(ep["answer_short"]).strip())
     if ep.get("context"):
         out += ["", plain(ep["context"]).strip()]
-    out += ["", brand["description"]["questions_heading"]]
-    out += [f"• {plain(q['q'])}" for q in ep["questions"]]
-    out += ["", f"{brand['description']['article_label']} {article_url(ep, brand)}"]
-    out += ["", brand["description"]["chapters_heading"]]
-    out += [f"{fmt_ts(c['t'], hours)} {plain(c['title'])}" for c in ep["chapters"]]
+    if layout == "merged":
+        out += ["", f"{brand['description']['article_label']} {article_url(ep, brand)}"]
+        out += ["", brand["description"].get("qa_chapters_heading", "⏱️ Въпроси и глави:")]
+        for t, line, answer in _qa_chapters(ep):
+            out.append(f"{fmt_ts(t, hours)} {line}")
+            if answer:
+                out.append(answer)
+    else:
+        out += ["", brand["description"]["questions_heading"]]
+        out += [f"• {plain(q['q'])}" for q in ep["questions"]]
+        out += ["", f"{brand['description']['article_label']} {article_url(ep, brand)}"]
+        out += ["", brand["description"]["chapters_heading"]]
+        out += [f"{fmt_ts(c['t'], hours)} {plain(c['title'])}" for c in ep["chapters"]]
     if ep.get("freshness_note"):
         out += ["", f"ℹ️ {plain(ep['freshness_note'])}"]
     people = ep.get("people", [])
@@ -721,31 +756,7 @@ def render_article(ep: dict, brand: dict, transcript_md: str | None = None, sche
     return "\n\n".join(B) + "\n"
 
 # ----------------------------------------------------------------------------
-# 3) Facebook post
-# ----------------------------------------------------------------------------
-
-def render_facebook(ep: dict, brand: dict) -> str:
-    """ep["facebook"] = {hook, points[], question?, hashtags[]}. Link lines and the optional brand footer are added here."""
-    fb, cfg = ep["facebook"], brand.get("facebook") or {}
-    out = [plain(fb["hook"]).strip(), ""]
-    out += [f"• {plain(x)}" for x in fb.get("points", [])]
-    if fb.get("points"):
-        out.append("")
-    if fb.get("question"):
-        out += [plain(fb["question"]).strip(), ""]
-    if ep.get("article", {}).get("slug"):
-        out.append(f"{cfg.get('article_label', '📖 Full answer:')} {article_url(ep, brand)}")
-    out.append(f"{cfg.get('watch_label', '▶ Watch the episode:')} {watch_url(ep['video']['id'])}")
-    footer = (cfg.get("footer") or "").strip()
-    if footer:
-        out += ["", footer]
-    tags = fb.get("hashtags") or []
-    if tags:
-        out += ["", " ".join(h if h.startswith("#") else "#" + h for h in tags[:5])]
-    return "\n".join(out).strip() + "\n"
-
-# ----------------------------------------------------------------------------
-# 4) schema.org JSON-LD
+# 3) schema.org JSON-LD
 # ----------------------------------------------------------------------------
 
 def render_schema(ep: dict, brand: dict) -> dict:
@@ -798,16 +809,14 @@ def render_schema(ep: dict, brand: dict) -> dict:
 
 def available_outputs(ep: dict) -> list[str]:
     """Outputs whose content exists in episode.json: the YouTube description is the core, the others are added by
-    their own commands (wp-article writes sections/faq, fb-post writes facebook)."""
+    its own command (wp-article writes sections/faq)."""
     out = ["youtube"]
     if ep.get("sections") and ep.get("faq"):
         out.append("wordpress")
-    if ep.get("facebook"):
-        out.append("facebook")
     return out
 
 
-def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) -> dict:
+def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None, layout: str = "classic") -> dict:
     """Render the requested outputs (default: every output whose content exists) into the episode folder.
     Paste-ready files go to the folder itself, schema.jsonld to work/."""
     ep_dir = Path(ep_dir)
@@ -819,10 +828,15 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) 
     written, skipped = [], []
     result: dict = {}
     if "youtube" in outputs:
-        text = render_description(ep, brand)
-        (ep_dir / OUTPUT_FILES["youtube"]).write_text(text, encoding="utf-8")
-        written.append(OUTPUT_FILES["youtube"])
+        if layout not in DESCRIPTION_LAYOUT_FILES:
+            return {"ok": False, "errors": [f"Unknown description layout '{layout}'; use {list(DESCRIPTION_LAYOUT_FILES)}."]}
+        text = render_description(ep, brand, layout)
+        fname = DESCRIPTION_LAYOUT_FILES[layout]
+        (ep_dir / fname).write_text(text, encoding="utf-8")
+        written.append(fname)
         result["description_chars"] = len(text)
+        if len(text) > YT_DESCRIPTION_LIMIT:
+            result["warning"] = f"{fname} is {len(text)} chars (limit {YT_DESCRIPTION_LIMIT})."
     if "wordpress" in outputs:
         if not (ep.get("sections") and ep.get("faq")):
             skipped.append("wordpress (episode.json has no sections/faq yet – run /video2aeo:wp-article)")
@@ -841,12 +855,6 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) 
                 json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             written += [OUTPUT_FILES["wordpress"], "wp-post-fields.json", f"{WORK_DIR}/schema.jsonld"]
             result["transcript_included"] = transcript_md is not None
-    if "facebook" in outputs:
-        if not ep.get("facebook"):
-            skipped.append("facebook (episode.json has no facebook block yet – run /video2aeo:fb-post)")
-        else:
-            (ep_dir / OUTPUT_FILES["facebook"]).write_text(render_facebook(ep, brand), encoding="utf-8")
-            written.append(OUTPUT_FILES["facebook"])
     return {"written": written, "skipped": skipped, **result}
 
 # ----------------------------------------------------------------------------
@@ -900,8 +908,6 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
     wanted = {"answer_short", "questions", "chapters", "article"}
     if "wordpress" in outputs:
         wanted |= {"faq", "sections"}
-    if "facebook" in outputs:
-        wanted.add("facebook")
     for key in sorted(wanted):
         if not ep.get(key):
             errors.append(f"episode.json is missing '{key}'.")
@@ -977,18 +983,6 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
                     errors.append("VideoObject needs uploadDate.")
             except json.JSONDecodeError as ex:
                 errors.append(f"schema.jsonld is not valid JSON: {ex}")
-    # facebook
-    if "facebook" in outputs:
-        f_path = ep_dir / OUTPUT_FILES["facebook"]
-        fb = ep.get("facebook") or {}
-        if f_path.exists():
-            placeholders |= set(PLACEHOLDER_RE.findall(f_path.read_text(encoding="utf-8")))
-        else:
-            errors.append("facebook-post.txt not rendered yet.")
-        if fb.get("hook") and len(plain(fb["hook"])) > FB_HOOK_SOFT_LIMIT:
-            warnings.append(f"Facebook hook is over {FB_HOOK_SOFT_LIMIT} characters – the feed may cut it behind „See more“.")
-        if fb and not (2 <= len(fb.get("points", [])) <= 6):
-            warnings.append("Facebook post: aim for 3–5 short points.")
     # numbers must be traceable to the transcript or claims
     corpus = ""
     for f in ("transcript.raw.txt", "transcript.edited.md"):
@@ -997,10 +991,8 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
             corpus += path.read_text(encoding="utf-8")
     corpus += " ".join(c.get("text", "") + " " + c.get("note", "") for c in ep.get("claims", []))
     corpus_n = corpus.replace(" ", "").replace(",", ".")
-    fb = ep.get("facebook") or {}
     copy = " ".join([ep.get("answer_short", ""), *ep.get("key_takeaways", []),
-                     *(f["a"] for f in ep.get("faq", [])), *(s.get("answer", "") for s in ep.get("sections", [])),
-                     fb.get("hook", ""), *fb.get("points", []), fb.get("question", "")])
+                     *(f["a"] for f in ep.get("faq", [])), *(s.get("answer", "") for s in ep.get("sections", []))])
     if corpus:
         for num in sorted(set(re.findall(r"\d+(?:[.,]\d+)?", copy))):
             n = num.replace(",", ".")
@@ -1050,6 +1042,5 @@ def review_sheet(ep_dir: Path, brand: dict, result: dict) -> str:
               f"- [{'x' if g.get('A') else ' '}] Gate A – transcript, names, numbers, chapters, title {g.get('A') or ''}",
               f"- [{'x' if g.get('youtube') or g.get('B') else ' '}] YouTube description approved "
               f"{g.get('youtube') or g.get('B') or ''}",
-              f"- [{'x' if g.get('wordpress') else ' '}] WordPress article approved {g.get('wordpress') or ''}",
-              f"- [{'x' if g.get('facebook') else ' '}] Facebook post approved {g.get('facebook') or ''}", ""]
+              f"- [{'x' if g.get('wordpress') else ' '}] WordPress article approved {g.get('wordpress') or ''}", ""]
     return "\n".join(lines)

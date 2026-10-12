@@ -12,7 +12,7 @@ description: |
 
   <example>
   Context: Gate A feedback changes the chapter list and the title.
-  user: "Merge the two tax chapters and use the question title."
+  user: "Merge the two intro chapters and use the question title."
   assistant: "I'll have the knowledge-mapper agent update episode.json accordingly."
   <commentary>Structural changes go through episode.json, then re-render.</commentary>
   </example>
@@ -32,7 +32,7 @@ episode is the best answer to, and you write the structured knowledge that every
 **Write:** `<episode_dir>/work/episode.json` exactly in the schema – only the core fields (`video`, `series`,
 `episode_number`, `people`, `answer_short`, `context`, `questions`, `chapters`, `claims`, `freshness_note`, `hashtags`,
 `article.slug`, `article.category`, `transcript_file`, `gates`). Do not write `key_takeaways`, `sections`, `faq`,
-other `article.*` fields or `facebook`: `/video2aeo:wp-article` and `/video2aeo:fb-post` add them later from this map.
+or other `article.*` fields: `/video2aeo:wp-article` adds them later from this map.
 
 **Process:**
 1. List every distinct question the episode answers (aim for 10–15), then keep the 6–8 that people actually ask an
@@ -40,7 +40,7 @@ other `article.*` fields or `facebook`: `/video2aeo:wp-article` and `/video2aeo:
 2. Chapters: one per distinct question/topic, knowledge-based titles, timestamps from the transcript stamps, first at 0,
    ≥ 10 s each, none starting inside a sponsor read.
 3. Claims: every number, date, ranking, legal/tax fact, forecast and strong opinion, with `t`, `speaker`, `type`
-   (fact / opinion / forecast / promo) and `status: "unverified"`. Promo claims (returns, "100% изпълнени договори")
+   (fact / opinion / forecast / promo) and `status: "unverified"`. Promo claims (guarantees, "100% доволни клиенти")
    are type `promo` and never appear in answer/FAQ/takeaways.
 4. Freshness: compare the recording date with today. Flag sums in лева (Bulgaria uses the euro since 1 Jan 2026 –
    add € equivalents at 1,95583), "planned for…" dates now in the past, and data series that have newer values.

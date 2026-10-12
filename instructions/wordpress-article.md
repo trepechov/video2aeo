@@ -27,19 +27,19 @@ and an LLM that extracts (self-contained sentences, question headings, FAQ, sche
 ## Writing the sections
 
 - 5–8 sections, 2,000–3,000 words in total including the transcript-derived parts; paragraphs ≤ 4 sentences.
-- H2 = a real question people ask („Колко данък върху имотите плащат собствениците в България?“).
+- H2 = a real question people ask („Колко време отнема да научим нов език като възрастни?“).
 - Open each section with the answer in 1–2 sentences that stand alone (subject named, number + year included).
 - A comparison of ≥ 3 items → a table; give the source or speaker in the caption.
-- Opinions and forecasts are always attributed: „Според финансовия консултант Мария Георгиева…“. Keep them out of
+- Opinions and forecasts are always attributed: „Според кариерния консултант Мария Георгиева…“. Keep them out of
   `answer_short` and the FAQ unless labelled.
 - Quotes: short, edited for readability without changing meaning, with speaker and timestamp.
 - Pre-2026 лева sums: keep the figure, add „(≈ X €)“ at 1,95583; keep the original in `claims`.
-- Do not repeat the sponsor read; the investor CTA belongs to the brand footer or site template, not the body.
+- Do not repeat the sponsor read; the brand's call to action belongs to the brand footer or site template, not the body.
 - FAQ: 5–8 entries, each 2–3 factual sentences. The visible FAQ equals the FAQPage schema (the validator checks it).
 
 ## SEO fields (`article` in episode.json → `wp-post-fields.json`)
 
-- `slug`: Latin transliteration of the key question, 3–6 words, hyphens („imotni-danatsi-politika-ceni“). The YouTube
+- `slug`: Latin transliteration of the key question, 3–6 words, hyphens („kak-da-nauchim-nov-ezik“). The YouTube
   description already links to this address – once set at Gate A, do not change it.
 - `seo_title` ≤ 60 chars; `meta_description` ≤ 155 chars and answer-first; one `focus_keyphrase` that appears in
   the title or first paragraph.
@@ -49,7 +49,7 @@ and an LLM that extracts (self-contained sentences, question headings, FAQ, sche
 
 ## Tags
 
-- 3–6 tags per article, lower case, singular topic nouns people search for („ипотека“, „имотни данъци“), never the
+- 3–6 tags per article, lower case, singular topic nouns people search for („подкаст“, „дистанционна работа“), never the
   guest's name or the episode number.
 - Prefer tags the site already uses (they group articles); coin a new tag only when no existing one fits.
 - Tags are `article.tags`; the same list feeds the schema `about` field.
