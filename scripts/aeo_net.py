@@ -61,6 +61,21 @@ def video_info(url: str) -> dict:
 # transcript
 # ----------------------------------------------------------------------------
 
+def _yt_cookie_args() -> list:
+    """Optional yt-dlp cookie options from ~/.yt-aeo/config.json: {"youtube": {"cookies_from_browser": "chrome"}} or
+    {"youtube": {"cookies_file": "/path/cookies.txt"}}. Any logged-in YouTube account works – it only gets past the
+    bot / IP checks; nothing is posted with it. Never put cookies in chat or in the repo."""
+    try:
+        cfg = json.loads((L.USER_DIR / "config.json").read_text(encoding="utf-8")).get("youtube", {})
+    except (OSError, ValueError):
+        return []
+    if cfg.get("cookies_file"):
+        return ["--cookies", str(Path(cfg["cookies_file"]).expanduser())]
+    if cfg.get("cookies_from_browser"):
+        return ["--cookies-from-browser", str(cfg["cookies_from_browser"])]
+    return []
+
+
 def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
     vid = L.video_id_from_url(url)
     errors = []
@@ -84,7 +99,7 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
     ytdlp = shutil.which("yt-dlp")
     if ytdlp:
         with tempfile.TemporaryDirectory() as tmp:
-            cmd = [ytdlp, "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
+            cmd = [ytdlp, *_yt_cookie_args(), "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
                    "--sub-format", "vtt", "-o", os.path.join(tmp, "%(id)s.%(ext)s"), L.watch_url(vid)]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             vtts = sorted(Path(tmp).glob("*.vtt"))

@@ -6,7 +6,7 @@ description: >
   "add FAQ and schema", "make the article readable for people and AI". It defines block order, section writing rules,
   SEO fields and schema; the text goes into episode.json and the plugin renders valid block markup.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
 ---
 
 # AEO WordPress article

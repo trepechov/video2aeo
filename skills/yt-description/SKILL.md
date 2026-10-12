@@ -6,7 +6,7 @@ description: >
   "rewrite the title the way people ask AI", "the description is over 5000 characters". It defines the fixed order,
   limits and writing rules; the text is stored in episode.json and rendered by the plugin.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
 ---
 
 # AEO YouTube description

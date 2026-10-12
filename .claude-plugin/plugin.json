@@ -1,7 +1,7 @@
 {
   "name": "yt-aeo",
   "displayName": "YouTube AEO Episode Agent",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Turns a new YouTube podcast episode into an AEO package: downloaded subtitles, edited transcript, AEO YouTube description with chapters, and a WordPress (Gutenberg) article with the video embedded first, FAQ and schema. Semi-automated with three human approval gates. Brand settings live in ~/.yt-aeo/.",
   "author": {
     "name": "Dimitar"

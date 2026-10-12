@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -161,8 +161,13 @@ Finish with a short summary: channel, header and footer set, glossary entries, n
 Offer these only if the user asks, or after the first episode:
 
 - **Automatic subtitle download** – not needed: the user can always attach the transcript `.txt` (YouTube Studio →
-  Subtitles → download, or copy „Show transcript“). Automatic download needs a one-time terminal command; if the user
-  wants it, ask them to get a colleague who is comfortable with Terminal to run
-  `/usr/bin/python3 -m pip install --user youtube-transcript-api`, then restart the Claude desktop app.
+  Subtitles → download, or copy „Show transcript“). No YouTube login or API key is needed for public videos. If the
+  user wants it, ask them to get a colleague who is comfortable with Terminal to run
+  `/usr/bin/python3 -m pip install --user youtube-transcript-api` (or `brew install yt-dlp`), then restart the
+  Claude desktop app.
+  - If YouTube answers „Sign in to confirm you're not a bot“ or blocks the address, add a logged-in browser to
+    `~/.yt-aeo/config.json`: `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
+    an exported `cookies.txt`). Any YouTube account works, it need not be the channel's; a separate account is safer
+    because automated use can get an account flagged. It is used only by `yt-dlp`. Never ask for cookies in chat.
 - **WordPress draft push** (Phase 1b) – an Application Password and a `~/.yt-aeo/config.json` file; do not collect the
   password in chat. Until credentials exist the user pastes `article.wp.html` into the WordPress code editor.

@@ -49,7 +49,7 @@ The plugin is brand-neutral and ships general AEO guidelines and best practices
 | `brand.json` | Channel, series, topics, site, organization, people, approved footer/promo block, disclaimer – any keys of `config/brand.json`, merged over it |
 | `glossary.json` | Brand names, people, ASR fixes, sponsor-read markers – added to `config/glossary.json` |
 | `guidelines.md` or `guidelines/*.md` | Brand-specific instructions (house style, tone, terminology, compliance); they extend the general guidelines |
-| `config.json` | Optional WordPress credentials for the draft push (`chmod 600`) |
+| `config.json` | Optional: WordPress credentials for the draft push, and `youtube.cookies_from_browser` / `youtube.cookies_file` for the subtitle download (`chmod 600`) |
 
 You normally never edit these files: the `setup` skill writes them after you approve a summary (the previous
 `guidelines.md` is kept as `guidelines.md.bak`; a damaged file is kept as `<name>.broken` and rewritten). Channel name
@@ -66,11 +66,41 @@ and topics are required; skipped optional values are saved empty. Set `YT_AEO_HO
    Then open a **new** Cowork task: `/yt-aeo:` commands appear when you type `/`.
 2. Python 3.9+ on the computer (preinstalled on macOS).
 3. First use: just run any `/yt-aeo:` command in a Cowork task. If the one-time setup is not done, the `setup` skill
-   starts by itself and asks for the channel, the promo block (links, messages, ads) and whether it goes at the top or
-   the end of the description, and shows the AEO guidelines to follow or switch off. It writes `~/.yt-aeo/` for you –
+   starts by itself and asks for the channel, the description header and footer (links, messages, ads), the brand
+   glossary (names, caption mistakes), and shows the AEO guidelines for you to verify, follow or switch off. It writes `~/.yt-aeo/` for you –
    no files to edit by hand. Re-run `/yt-aeo:setup` any time to change the answers.
-4. Optional, needs a terminal: subtitle download – install into the interpreter the desktop app uses (on macOS usually `/usr/bin/python3`,
-   not Homebrew's): `/usr/bin/python3 -m pip install --user youtube-transcript-api`.
+
+### Automatic subtitle download (optional, one-time, ~2 minutes)
+
+Without it you attach the transcript `.txt` (YouTube Studio → Subtitles → download) – that always works. To let the
+plugin fetch the subtitles from the video address, install one downloader. No YouTube API key and no channel access
+are needed for public videos.
+
+1. **Recommended – `yt-dlp`** (a standalone program, no Python version to worry about):
+   ```bash
+   brew install yt-dlp
+   ```
+   Alternative, a Python package: `python3 -m pip install --user youtube-transcript-api` – use the same `python3`
+   the plugin runs with (in the Claude desktop app on macOS this is `/usr/bin/python3`, not Homebrew's).
+2. Restart the Claude app (or start a new Claude Code session) so it sees the new program.
+3. Only if YouTube answers „Sign in to confirm you're not a bot“ or blocks your address: let `yt-dlp` use a logged-in
+   browser. Any YouTube account works, it does not have to be the channel's (a separate account is safer – automated
+   use can get an account flagged). Create `~/.yt-aeo/config.json` (`chmod 600`):
+   ```json
+   { "youtube": { "cookies_from_browser": "chrome" } }
+   ```
+   or, if the browser's keychain is not reachable from the app, export a `cookies.txt` once and use
+   `{ "youtube": { "cookies_file": "~/.yt-aeo/cookies.txt" } }`. Cookies are a password: never paste them into chat
+   or commit them. Private or unpublished videos still need an account that has access to them.
+
+### Minimal setup on a marketer's computer
+
+1. Install Claude (desktop app or Claude Code) and sign in.
+2. Add the marketplace and install the plugin (step 1 above).
+3. Run `/yt-aeo:setup` once and answer the questions (channel, header/footer, glossary, guidelines).
+4. Optional: `brew install yt-dlp` for automatic subtitles. Python is preinstalled on macOS.
+
+That is all – then `/yt-aeo:aeo-episode` with the episode address or transcript.
 
 ## Updating
 

@@ -126,4 +126,16 @@ check(res["ok"] and not any("direct answer" in w for w in res["warnings"]), f"va
 check(any("glossary" in w for w in L.setup_status()["warnings"]) or L.setup_status()["glossary_entries"] > 0,
       "empty glossary must warn")
 
+# --- optional yt-dlp cookies from config.json --------------------------------------------------------
+import aeo_net as N  # noqa: E402
+cfgp = L.USER_DIR / "config.json"
+cfgp.parent.mkdir(parents=True, exist_ok=True)
+cfgp.write_text('{"youtube": {"cookies_from_browser": "chrome"}}', encoding="utf-8")
+check(N._yt_cookie_args() == ["--cookies-from-browser", "chrome"], "cookies_from_browser not passed")
+cfgp.write_text('{"youtube": {"cookies_file": "/x/c.txt", "cookies_from_browser": "chrome"}}', encoding="utf-8")
+check(N._yt_cookie_args() == ["--cookies", "/x/c.txt"], "cookies_file must win")
+cfgp.write_text('{"wordpress": {}}', encoding="utf-8")
+check(N._yt_cookie_args() == [], "no youtube config -> no cookie args")
+cfgp.unlink()
+
 print(f"smoke: {checks} checks ok")
