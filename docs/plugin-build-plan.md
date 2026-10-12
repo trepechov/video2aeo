@@ -82,7 +82,7 @@ Not yet tested: agents + `yt-aeo-tools` MCP server in Desktop Cowork; live `fetc
   `YT_AEO_HOME=examples/demo python3 scripts/aeo.py render examples/demo && YT_AEO_HOME=examples/demo python3 scripts/aeo.py validate examples/demo` ·
   `(cd dev && npm run validate-blocks)`.
 - Claude Desktop: bump `version` in `.claude-plugin/plugin.json` → install the new version (GitHub marketplace once
-  set up; until then `dev/package.sh` → Customize → Plugins: remove the old plugin, upload
+  set up; until then `dev/package.sh` → Settings → Plugins: remove the old plugin, upload
   `dist/yt-aeo-<version>.plugin`) → new Cowork task with a working folder → `/yt-aeo:aeo-episode`.
 
 ### 3.2 Phase 1a – manual MVP (start here; ~1 week)

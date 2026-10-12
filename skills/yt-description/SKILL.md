@@ -6,10 +6,14 @@ description: >
   "rewrite the title the way people ask AI", "the description is over 5000 characters". It defines the fixed order,
   limits and writing rules; the text is stored in episode.json and rendered by the plugin.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # AEO YouTube description
+
+**Preflight:** call `setup_status` first. If `configured` is false, run the `setup` skill before writing anything,
+then continue with the user's request. (No tools: if `~/.yt-aeo/setup.json` is missing, or the brand config still
+has `{{…}}` values, run the `setup` skill.)
 
 Write the description fields in `episode.json`; `render_package` assembles them in this fixed order:
 
@@ -21,8 +25,10 @@ Write the description fields in `episode.json`; `render_package` assembles them 
 5. „⏱️ Глави:“ – rendered from `chapters`.
 6. `freshness_note` (if any).
 7. Host / guest line – from `people`.
-8. Brand footer – from the brand config (`~/.yt-aeo/brand.json` over `config/brand.json`) (schedule, approved investor block, short disclaimer + link, socials).
-   Never write or reword the investor/promo text yourself.
+8. Brand footer – from the brand config (`~/.yt-aeo/brand.json` over `config/brand.json`) (schedule, short
+   disclaimer + link, socials). The promo block (links, messages, ads – `description.promo`) is rendered at the
+   end, inside the footer, or at the very top when `description.promo_position` is `top` (the answer then starts
+   below it). Never write or reword the promo text yourself.
 9. Up to 3 `hashtags` (YouTube shows the first three above the title).
 
 ## Chapters

@@ -8,7 +8,7 @@ description: >
   description with chapters → WordPress Gutenberg article with the video embedded first → schema → checks,
   stopping at three human approval gates.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # AEO Episode Agent – orchestrator
@@ -25,9 +25,14 @@ Read, once at the start and in this order:
 3. User/brand instructions, if present: `~/.yt-aeo/guidelines.md` and every `~/.yt-aeo/guidelines/*.md`. They extend
    and override the general guidelines (tone, terminology, compliance, house style) – but never the rules the code
    enforces (YouTube limits, chapter rules, block markup, number traceability).
-Pass the same instructions on to every agent you delegate to. Read `references/episode-schema.md` before writing `episode.json`.
+Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the content language
+(`language_name` from `setup_status.current`) and the switched-off guideline ids (`setup_status.guidelines_off`) –
+those general guidelines are not applied anywhere in the episode. Read `references/episode-schema.md` before writing `episode.json`.
 
 ## Step 0 – Set up
+
+0. Preflight: call `setup_status`. If `configured` is false, run the `setup` skill first (brand, promo block
+   and its position, guidelines), then continue here. Do this before reading the brand config below.
 
 1. Create a task list with the steps below so the marketer sees progress.
 2. Get video info with `get_video_info(url)`. Keep `title`, `upload_date`, `duration_seconds`, `thumbnail_url`,
@@ -41,7 +46,7 @@ Default (manual): the user adds a transcript `.txt` file (YouTube Studio → Sub
 "Show transcript") to the episode folder or attaches it. Import it with `import_transcript(file, episode_dir)` (or
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/aeo.py import <file> <episode_dir>`).
 
-Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir, "bg")`. If it fails, do not retry endlessly: show the returned fallback
+Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir)` (uses the brand language). If it fails, do not retry endlessly: show the returned fallback
 in one short message (download .vtt/.srt from YouTube Studio → Subtitles, or copy "Show transcript"), and when the
 user provides the file call `import_transcript(file, episode_dir)`. A transcript pasted in the chat can be saved to a
 file first and imported the same way.

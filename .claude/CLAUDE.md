@@ -29,7 +29,11 @@ Content language is **Bulgarian**; code, comments and docs are English.
   `YT_AEO_HOME`). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
 - `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.yt-aeo/` files.
 - `examples/demo/` – golden example (fictional brand + episode). Must stay valid.
-- `dev/` – developer-only: WordPress block validator, `package.sh`. Not shipped.
+- `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`
+  (setup flow and footer/promo rendering against a temp `YT_AEO_HOME`). Not shipped.
+- Setup: every user-facing skill preflights with the `setup_status` tool; the `setup` skill interviews the user and
+  writes `~/.yt-aeo/` via `save_setup` (marker `setup.json`). Adjustable guideline ids live in
+  `skills/setup/references/guideline-catalog.md`, `aeo-rules.md` tags and `ADJUSTABLE_GUIDELINES` – keep all three in sync.
 
 ## Principles (do not break)
 1. LLM writes language; code enforces rules (YouTube limits, chapter rules, block markup, schema, number traceability).
@@ -53,6 +57,7 @@ claude plugin validate .
 export YT_AEO_HOME=examples/demo
 python3 scripts/aeo.py render examples/demo && python3 scripts/aeo.py validate examples/demo   # expect ok: true
 /usr/bin/python3 scripts/aeo.py validate examples/demo                                          # Python 3.9 still works
+python3 dev/smoke.py && /usr/bin/python3 dev/smoke.py                                          # setup + promo checks
 (cd dev && npm i && npm run validate-blocks)                                                  # expect invalid: 0, first block core/embed
 grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules} --exclude=package-lock.json .   # expect no output
 ```
@@ -61,7 +66,7 @@ Iterate in Claude Code: `claude --plugin-dir .`
 ## Test in Claude Desktop
 1. Bump `version` in `.claude-plugin/plugin.json` (Desktop may keep a stale copy of the same version).
 2. `dev/package.sh` → `dist/yt-aeo-<version>.plugin` (until the GitHub marketplace is set up).
-3. Desktop → Customize → Plugins: remove the old plugin, upload the new file.
+3. Desktop → Settings → Plugins: remove the old plugin, upload the new file (or push and click Update).
 4. New **Cowork** task with a working folder → `/yt-aeo:aeo-episode` + transcript `.txt` (plain chat loads skills only).
 
 The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python3`, 3.9 here), not Homebrew's (3.14).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build an installable plugin zip (for Claude desktop → Customize → Plugins → Upload).
+# Build an installable plugin zip (for Claude desktop → Settings → Plugins → Upload).
 # Leaves out repo-only material: docs, dev tooling, git, Claude Code project settings.
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -6,10 +6,14 @@ description: >
   "add FAQ and schema", "make the article readable for people and AI". It defines block order, section writing rules,
   SEO fields and schema; the text goes into episode.json and the plugin renders valid block markup.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # AEO WordPress article
+
+**Preflight:** call `setup_status` first. If `configured` is false, run the `setup` skill before writing anything,
+then continue with the user's request. (No tools: if `~/.yt-aeo/setup.json` is missing, or the brand config still
+has `{{…}}` values, run the `setup` skill.)
 
 The article title is **the same as the final YouTube title** (`video.title`). It lives in the knowledge-base category (`site.kb_name` in the brand config).
 It must serve two readers at once: a person who skims (answer first, short paragraphs, headings, tables) and an

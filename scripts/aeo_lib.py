@@ -10,10 +10,15 @@ Used by scripts/aeo.py (CLI) and server/server.py (local MCP tools).
 """
 from __future__ import annotations
 
+import datetime
 import html
+import importlib.util
 import json
 import os
+import platform
 import re
+import sys
+import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +47,222 @@ def load_brand(override: Path | None = None) -> dict:
         if path and Path(path).exists():
             brand = _deep_merge(brand, load_json(path))
     return brand
+
+
+SETUP_FILE = "setup.json"
+# Placeholders the user must fill; optional ones are blanked by save_setup when skipped.
+REQUIRED_FIELDS = (("channel",), ("topics",))
+OPTIONAL_FIELDS = (("organization", "name"), ("organization", "logo"), ("description", "schedule"),
+                   ("description", "disclaimer_url"), ("description", "social_links"))
+# Ids of the adjustable guidelines in skills/setup/references/guideline-catalog.md (dev/smoke.py checks they match).
+ADJUSTABLE_GUIDELINES = ("answer-first", "question-titles", "knowledge-chapters", "question-index", "freshness-note",
+                         "euro-equivalents", "skip-sponsor-reads", "question-sections", "faq-and-authors")
+PROMO_POSITIONS = ("end", "top")
+
+
+def _get(d: dict, path: tuple):
+    for k in path:
+        d = d.get(k) if isinstance(d, dict) else None
+    return d
+
+
+def _set(d: dict, path: tuple, value) -> None:
+    for k in path[:-1]:
+        d = d.setdefault(k, {})
+    d[path[-1]] = value
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def setup_status() -> dict:
+    """Has the one-time brand setup been done? Used by every user-facing skill as its preflight check.
+    Never raises on a damaged file – it reports it under `unreadable` so setup can repair it."""
+    unreadable = []
+    try:
+        brand = load_brand()
+    except (OSError, ValueError) as ex:
+        unreadable.append(f"brand.json: {ex}")
+        brand = load_json(PLUGIN_ROOT / "config" / "brand.json")
+    marker = USER_DIR / SETUP_FILE
+    info = {}
+    if marker.exists():
+        try:
+            info = load_json(marker)
+        except (OSError, ValueError) as ex:
+            unreadable.append(f"{SETUP_FILE}: {ex}")
+    guidelines_path = USER_DIR / "guidelines.md"
+    try:
+        guidelines_md = guidelines_path.read_text(encoding="utf-8") if guidelines_path.exists() else ""
+    except OSError as ex:
+        unreadable.append(f"guidelines.md: {ex}")
+        guidelines_md = ""
+    missing = sorted(set(PLACEHOLDER_RE.findall(json.dumps(brand, ensure_ascii=False))))
+    required_missing = [".".join(p) for p in REQUIRED_FIELDS
+                        if not str(_get(brand, p) or "").strip() or PLACEHOLDER_RE.search(str(_get(brand, p)))]
+    d = brand["description"]
+    warnings = []
+    if "example.com" in brand.get("site", {}).get("base_url", ""):
+        warnings.append("site.base_url is still example.com – article links in the description will point there.")
+    if d.get("promo_position", "end") not in PROMO_POSITIONS:
+        warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
+    legacy_footer = "{PROMO}" not in d.get("footer", "") and "{{PROMO_BLOCK}}" not in d.get("footer", "")
+    done = bool(info.get("completed"))
+    return {
+        "configured": done and not missing and not unreadable,
+        "setup_completed": done,
+        "user_dir": str(USER_DIR),
+        "missing": missing,
+        "required_missing": required_missing,
+        "unreadable": unreadable,
+        "warnings": warnings,
+        "legacy_footer": legacy_footer,
+        "current": {
+            "language": brand.get("language", "bg"),
+            "language_name": brand.get("language_name", ""),
+            "channel": brand.get("channel", ""),
+            "topics": brand.get("topics", ""),
+            "site": brand.get("site", {}),
+            "organization": brand.get("organization", {}),
+            "promo": d.get("promo", ""),
+            "promo_position": d.get("promo_position", "end"),
+            "schedule": d.get("schedule", ""),
+            "disclaimer_url": d.get("disclaimer_url", ""),
+            "social_links": d.get("social_links", ""),
+            "footer": d.get("footer", ""),
+            "guidelines_md": guidelines_md,
+        },
+        "guidelines_off": info.get("guidelines_off", []),
+    }
+
+
+def check_environment() -> dict:
+    """What the plugin needs on this computer. Runs inside the interpreter that the desktop app launches.
+    Read-only: checks that the settings folder (or its nearest existing parent) is writable without creating it."""
+    py_ok = sys.version_info >= (3, 9)
+    probe = USER_DIR
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    writable = os.access(probe, os.W_OK)
+    optional = {
+        "youtube_transcript_api": "automatic subtitle download",
+        "yt_dlp": "subtitle download, second route",
+    }
+    optional_status = {m: importlib.util.find_spec(m) is not None for m in optional}
+    problems = []
+    if not py_ok:
+        problems.append(f"Python {platform.python_version()} is too old – 3.9 or newer is needed.")
+    if not writable:
+        problems.append(f"The folder {USER_DIR} cannot be written – brand settings cannot be saved.")
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "python": {"version": platform.python_version(), "executable": sys.executable, "ok": py_ok},
+        "platform": f"{platform.system()} {platform.release()}",
+        "user_dir": str(USER_DIR),
+        "user_dir_writable": writable,
+        "optional": {m: {"installed": optional_status[m], "enables": optional[m]} for m in optional},
+        "automatic_subtitles": any(optional_status.values()),
+    }
+
+
+def _expand_dotted(d: dict) -> dict:
+    """{"description.promo": x} -> {"description": {"promo": x}} (agents often send dotted keys)."""
+    out: dict = {}
+    for k, v in d.items():
+        v = _expand_dotted(v) if isinstance(v, dict) else v
+        path = tuple(k.split("."))
+        cur = _get(out, path)
+        _set(out, path, _deep_merge(cur, v) if isinstance(cur, dict) and isinstance(v, dict) else v)
+    return out
+
+
+def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelines_md: str | None = None,
+               guidelines_off: list | None = None) -> dict:
+    """Write the user's brand files to USER_DIR (fixed file names only).
+    brand/glossary are merged over any existing file; omitted arguments keep what is saved.
+    Skipped optional fields are saved as empty text. Everything is validated before anything is written."""
+    errors = []
+    if brand is not None and not isinstance(brand, dict):
+        errors.append("brand must be an object.")
+    if glossary is not None and not isinstance(glossary, dict):
+        errors.append("glossary must be an object.")
+    if guidelines_md is not None and not isinstance(guidelines_md, str):
+        errors.append("guidelines_md must be text.")
+    if guidelines_off is not None:
+        if not isinstance(guidelines_off, list):
+            errors.append("guidelines_off must be a list of ids.")
+        else:
+            unknown = sorted(set(map(str, guidelines_off)) - set(ADJUSTABLE_GUIDELINES))
+            if unknown:
+                errors.append(f"Unknown or locked guideline ids: {unknown}. Adjustable ids: {list(ADJUSTABLE_GUIDELINES)}.")
+    if brand is None and glossary is None and guidelines_md is None and guidelines_off is None:
+        errors.append("Nothing to save.")
+    brand = _expand_dotted(brand) if isinstance(brand, dict) else brand
+    pos = _get(brand or {}, ("description", "promo_position"))
+    if pos is not None and pos not in PROMO_POSITIONS:
+        errors.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
+
+    if errors:
+        return {"ok": False, "errors": errors, **setup_status()}
+
+    def read_or_set_aside(path: Path) -> dict:
+        """A damaged settings file is kept as <name>.broken and replaced, so setup can always repair the folder."""
+        if not path.exists():
+            return {}
+        try:
+            data = load_json(path)
+            if isinstance(data, dict):
+                return data
+        except (OSError, ValueError):
+            pass
+        broken.append(path)
+        return {}
+
+    writes: dict = {}
+    broken: list = []
+    marker_path = USER_DIR / SETUP_FILE
+    old_marker = read_or_set_aside(marker_path)
+    for name, data in (("brand.json", brand), ("glossary.json", glossary)):
+        path = USER_DIR / name
+        if data is None and not (name == "brand.json" and path.exists()):
+            continue
+        merged = _deep_merge(read_or_set_aside(path), data or {})
+        if name == "brand.json":
+            full = _deep_merge(load_json(PLUGIN_ROOT / "config" / "brand.json"), merged)
+            for p in OPTIONAL_FIELDS:
+                v = _get(full, p)
+                if v is None or PLACEHOLDER_RE.search(str(v)):
+                    _set(merged, p, "")
+        writes[path] = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
+
+    if guidelines_md is not None:
+        writes[USER_DIR / "guidelines.md"] = guidelines_md.rstrip() + "\n"
+    off = sorted(set(guidelines_off)) if guidelines_off is not None else old_marker.get("guidelines_off", [])
+    writes[marker_path] = json.dumps({"completed": datetime.date.today().isoformat(), "guidelines_off": off},
+                                     ensure_ascii=False, indent=2) + "\n"
+    try:
+        USER_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        for path in broken:
+            os.replace(path, path.with_name(path.name + ".broken"))
+        g = USER_DIR / "guidelines.md"
+        if g in writes and g.exists() and g.read_text(encoding="utf-8") != writes[g]:
+            _write_atomic(USER_DIR / "guidelines.md.bak", g.read_text(encoding="utf-8"))
+        for path, text in writes.items():  # setup.json last: a failure never marks setup as done
+            if path != marker_path:
+                _write_atomic(path, text)
+        _write_atomic(marker_path, writes[marker_path])
+    except OSError as ex:
+        return {"ok": False, "errors": [f"Could not write to {USER_DIR}: {ex}"], **setup_status()}
+    return {"ok": True, "set_aside": [p.name + ".broken" for p in broken], **setup_status()}
 
 
 def _deep_merge(a: dict, b: dict) -> dict:
@@ -228,10 +449,41 @@ def article_url(ep: dict, brand: dict) -> str:
 # 1) YouTube description
 # ----------------------------------------------------------------------------
 
+DESC_SEP = "_" * 39
+FOOTER_FIELDS = {"{SCHEDULE}": "schedule", "{DISCLAIMER_URL}": "disclaimer_url", "{SOCIAL_LINKS}": "social_links"}
+
+
+def _promo_and_footer(d: dict) -> tuple[str, str]:
+    """Return (top_block, footer). Fills the footer's {SCHEDULE}/{DISCLAIMER_URL}/{SOCIAL_LINKS} tokens (a line whose
+    value is empty is dropped) and places the promo (links, messages, ads) at {PROMO}, above the footer, or at the top."""
+    lines = []
+    for line in d["footer"].rstrip().replace("{{PROMO_BLOCK}}", "{PROMO}").split("\n"):
+        for token, key in FOOTER_FIELDS.items():
+            pattern = r"(?<!\{)" + re.escape(token) + r"(?!\})"  # not inside a literal {{…}} placeholder
+            if line is not None and re.search(pattern, line):
+                value = str(d.get(key) or "").strip()
+                line = re.sub(pattern, lambda _m: value, line) if value else None
+        if line is not None:
+            lines.append(line)
+    footer = "\n".join(lines)
+    promo = (d.get("promo") or "").replace("{PROMO}", "").strip()
+    if promo and d.get("promo_position") != "top":
+        if "{PROMO}" in footer:
+            return "", footer.replace("{PROMO}", promo)
+        if promo in footer:  # older footer that already carries the promo text
+            return "", footer
+        return "", f"{promo}\n{DESC_SEP}\n{footer}"
+    footer = re.sub(r"(_{10,}\n)\s*(?=_{10,})", "", footer.replace("{PROMO}", "")).strip()
+    return promo, footer
+
+
 def render_description(ep: dict, brand: dict) -> str:
     vid = ep["video"]
     hours = (vid.get("duration_seconds") or 0) >= 3600
     out: list[str] = []
+    top, footer = _promo_and_footer(brand["description"])
+    if top:
+        out += [top, DESC_SEP, ""]
     out.append(plain(ep["answer_short"]).strip())
     if ep.get("context"):
         out += ["", plain(ep["context"]).strip()]
@@ -247,12 +499,12 @@ def render_description(ep: dict, brand: dict) -> str:
     guests = [f"{p['name']} ({p.get('job_title', '')})".replace(" ()", "") for p in people if p.get("role") == "guest"]
     who = []
     if host:
-        who.append(f"🎙️ Водещ: {', '.join(host)}")
+        who.append(f"{brand['description'].get('host_label', '🎙️ Водещ:')} {', '.join(host)}")
     if guests:
-        who.append(f"👤 Гост: {', '.join(guests)}")
+        who.append(f"{brand['description'].get('guest_label', '👤 Гост:')} {', '.join(guests)}")
     if who:
         out += ["", *who]
-    out += ["", brand["description"]["footer"].rstrip()]
+    out += ["", footer]
     if ep.get("hashtags"):
         out += ["", " ".join(h if h.startswith("#") else "#" + h for h in ep["hashtags"][:3])]
     return "\n".join(out).strip() + "\n"
@@ -418,7 +670,7 @@ def render_schema(ep: dict, brand: dict) -> dict:
                       "endOffset": int(end), "url": watch_url(vid["id"], c["t"] or 1)})
     persons = [{"@type": "Person", "name": p["name"], **({"jobTitle": p["job_title"]} if p.get("job_title") else {}),
                 **({"url": p["url"]} if p.get("url") else {})} for p in ep.get("people", [])]
-    org_node = {"@type": "Organization", "@id": org["url"].rstrip("/") + "/#organization", "name": org["name"],
+    org_node = {"@type": "Organization", "@id": org["url"].rstrip("/") + "/#organization", "name": org["name"] or brand.get("channel", ""),
                 "url": org["url"], **({"logo": org["logo"]} if org.get("logo") else {}),
                 **({"sameAs": org["same_as"]} if org.get("same_as") else {})}
     video = {
@@ -540,7 +792,15 @@ def validate_package(ep_dir: Path, brand: dict) -> dict:
             errors.append(f"Description is {len(d)} chars (limit {YT_DESCRIPTION_LIMIT}).")
         elif len(d) > YT_DESCRIPTION_LIMIT - YT_DESCRIPTION_MARGIN:
             warnings.append(f"Description is {len(d)} chars – under {YT_DESCRIPTION_MARGIN} chars of margin.")
-        first = d.strip().split("\n", 1)[0]
+        body = d.strip()
+        top, _ = _promo_and_footer(brand["description"])
+        if top and body.startswith(top):
+            if len(top) > 300 or top.count("\n") > 3:
+                warnings.append("The promo block at the top is long – the direct answer should start within ~3 lines.")
+            body = body[len(top):].lstrip().removeprefix(DESC_SEP).strip()
+        if brand["description"].get("promo_position", "end") not in PROMO_POSITIONS:
+            warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS} – rendered at the end.")
+        first = body.split("\n", 1)[0]
         if len(first) < 80:
             warnings.append("Description should open with a 2–3 sentence direct answer.")
     else:

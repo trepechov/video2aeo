@@ -12,7 +12,7 @@
       "name": "yt-aeo",
       "source": "./",
       "description": "Turns a podcast/video episode transcript into an AEO YouTube description with chapters and a WordPress Gutenberg article. Brand settings live in ~/.yt-aeo/.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "productivity"
     }
   ]

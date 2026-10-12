@@ -16,18 +16,39 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
 
-SERVER = {"name": "yt-aeo-tools", "version": "0.1.0"}
+SERVER = {"name": "yt-aeo-tools", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
 DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-10-dk-08-danatsi"}
 TOOLS = [
+    {"name": "setup_status",
+     "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
+                    "placeholders, unreadable files, warnings, legacy_footer and the current saved values (to pre-fill setup). "
+                    "Call it first in every yt-aeo workflow; if configured is false run the setup skill.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "check_environment",
+     "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.yt-aeo/ can be "
+                    "written, and whether the optional subtitle downloaders are installed. Used by the setup skill.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "save_setup",
+     "description": "Write the user-approved setup answers to ~/.yt-aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
+                    "brand/glossary are merged over existing files; omitted arguments keep what is saved; skipped optional fields "
+                    "are saved empty; the previous guidelines.md is kept as guidelines.md.bak. Only call after the user approved "
+                    "the summary. Returns ok/errors plus the new status.",
+     "inputSchema": {"type": "object", "properties": {
+         "brand": {"type": "object", "description": "Nested subset of config/brand.json, e.g. {\"channel\": \"…\", \"description\": "
+                                                    "{\"promo\": \"…\", \"promo_position\": \"end\", \"schedule\": \"…\"}}"},
+         "glossary": {"type": "object"},
+         "guidelines_md": {"type": "string", "description": "Full text of guidelines.md: existing house rules plus the 'Switched-off guidelines' section"},
+         "guidelines_off": {"type": "array", "items": {"type": "string"},
+                            "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"}}}},
     {"name": "get_video_info",
      "description": "Get title, channel, thumbnail, upload date, duration and the current description of a YouTube video.",
      "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
     {"name": "fetch_transcript",
-     "description": "Download the video's subtitles (Bulgarian by default) from YouTube to transcript.raw.json/.txt in the episode folder. "
+     "description": "Download the video's subtitles (in the brand language by default) from YouTube to transcript.raw.json/.txt in the episode folder. "
                     "Runs on this computer. On failure returns the manual fallback.",
      "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "episode_dir": DIR,
-                                                       "lang": {"type": "string", "default": "bg"}},
+                                                       "lang": {"type": "string", "description": "Subtitle language code; defaults to the brand language"}},
                      "required": ["url", "episode_dir"]}},
     {"name": "import_transcript",
      "description": "Parse a transcript file the user downloaded or pasted (VTT, SRT, YouTube 'MM:SS text' copy, JSON) into transcript.raw.*",
@@ -52,10 +73,16 @@ def _brand():
 
 
 def call(name, args):
+    if name == "setup_status":
+        return L.setup_status()
+    if name == "check_environment":
+        return L.check_environment()
+    if name == "save_setup":
+        return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"))
     if name == "get_video_info":
         return N.video_info(args["url"])
     if name == "fetch_transcript":
-        return N.fetch_transcript(args["url"], Path(args["episode_dir"]), args.get("lang", "bg"))
+        return N.fetch_transcript(args["url"], Path(args["episode_dir"]), args.get("lang") or _brand().get("language", "bg"))
     if name == "import_transcript":
         segs = L.parse_transcript_text(Path(args["file"]).read_text(encoding="utf-8"))
         return L.write_raw_transcript(segs, Path(args["episode_dir"]), f"import:{Path(args['file']).name}")
