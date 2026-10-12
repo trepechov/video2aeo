@@ -6,14 +6,15 @@ description: >
   "rewrite the title the way people ask AI", "the description is over 5000 characters". It defines the fixed order,
   limits and writing rules; the text is stored in episode.json and rendered by the plugin.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # AEO YouTube description
 
-**Preflight:** call `setup_status` first. If `configured` is false, run the `setup` skill before writing anything,
-then continue with the user's request. (No tools: if `~/.yt-aeo/setup.json` is missing, or the brand config still
-has `{{…}}` values, run the `setup` skill.)
+**STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
+`~/.yt-aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
+`setup` skill now and only then continue with the user's request. The output tools also refuse to run
+(`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 Write the description fields in `episode.json`; `render_package` assembles them in this fixed order:
 

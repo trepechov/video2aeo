@@ -35,6 +35,11 @@ def main(argv=None):
     ss = sub.add_parser("save-setup"); ss.add_argument("file")
     a = p.parse_args(argv)
 
+    if a.cmd not in ("status", "doctor", "save-setup"):
+        blocked = L.require_setup()
+        if blocked:
+            print(json.dumps(blocked, ensure_ascii=False, indent=2))
+            return 1
     if a.cmd == "info":
         out = N.video_info(a.url)
     elif a.cmd == "status":
@@ -62,4 +67,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # One-time setup for the AEO Episode Agent

@@ -8,10 +8,15 @@ description: >
   description with chapters → WordPress Gutenberg article with the video embedded first → schema → checks,
   stopping at three human approval gates.
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # AEO Episode Agent – orchestrator
+
+**STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
+`~/.yt-aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
+`setup` skill now and only then continue with the user's request. The output tools also refuse to run
+(`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 Turn one YouTube URL into an approved AEO package. Write every piece of text yourself; use the
 `yt-aeo-tools` tools (or `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/aeo.py`) only for fetching, rendering and checking.
@@ -31,8 +36,8 @@ those general guidelines are not applied anywhere in the episode. Read `referenc
 
 ## Step 0 – Set up
 
-0. Preflight: call `setup_status`. If `configured` is false, run the `setup` skill first (brand, promo block
-   and its position, guidelines), then continue here. Do this before reading the brand config below.
+0. Preflight (see the STOP rule at the top): `setup_status` must report `configured: true` – otherwise run the `setup`
+   skill first (brand, promo block and its position, guidelines), then continue here.
 
 1. Create a task list with the steps below so the marketer sees progress.
 2. Get video info with `get_video_info(url)`. Keep `title`, `upload_date`, `duration_seconds`, `thumbnail_url`,

@@ -68,6 +68,10 @@ TOOLS = [
 ]
 
 
+GATED = {"get_video_info", "fetch_transcript", "import_transcript", "render_package", "validate_package",
+         "wp_push_draft"}
+
+
 def _brand():
     return L.load_brand()
 
@@ -79,6 +83,10 @@ def call(name, args):
         return L.check_environment()
     if name == "save_setup":
         return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"))
+    if name in GATED:
+        blocked = L.require_setup()
+        if blocked:
+            return blocked
     if name == "get_video_info":
         return N.video_info(args["url"])
     if name == "fetch_transcript":

@@ -60,6 +60,18 @@ ADJUSTABLE_GUIDELINES = ("answer-first", "question-titles", "knowledge-chapters"
 PROMO_POSITIONS = ("end", "top")
 
 
+def require_setup():
+    """Hard gate for the tools that produce output: None when setup is done, else an error dict that tells the
+    caller to run the `setup` skill first. Prompt instructions alone are skippable – this is not."""
+    st = setup_status()
+    if st["configured"]:
+        return None
+    return {"ok": False, "setup_required": True,
+            "error": "Setup is not done on this computer yet. STOP: do not continue with the user's request. "
+                     "Run the `setup` skill (/yt-aeo:setup) first, then retry this step.",
+            "missing": st["missing"], "unreadable": st["unreadable"], "user_dir": st["user_dir"]}
+
+
 def _get(d: dict, path: tuple):
     for k in path:
         d = d.get(k) if isinstance(d, dict) else None
