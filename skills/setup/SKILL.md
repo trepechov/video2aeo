@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.2.3"
+  version: "0.3.0"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -118,7 +118,7 @@ brand terms. Pass the result as `glossary` (`{"names": [...], "fixes": {...}, "s
 ## 4. Guidelines – verify what the agent will follow
 
 The user must look at the guidelines before they are saved; do not just ask "ok?". Read
-`skills/aeo-episode/references/aeo-rules.md` and `references/guideline-catalog.md` and show a short plain-language
+`instructions/aeo-rules.md` and `references/guideline-catalog.md` and show a short plain-language
 digest in two groups:
 1. **Always checked by the plugin** (locked) – list them briefly, they cannot be switched off.
 2. **Recommended AEO guidelines** (adjustable) – list each with its plain-language meaning.
@@ -154,7 +154,7 @@ returns `ok` plus the new status. If `ok` is false, explain `errors` in plain wo
 If `configured` is still false, ask for what `required_missing` / `missing` lists and save again.
 
 Finish with a short summary: channel, header and footer set, glossary entries, number of guidelines followed – and the next step
-(`/yt-aeo:aeo-episode` with the episode's YouTube address and transcript).
+(`/yt-aeo:episode` with the episode's YouTube address and transcript).
 
 ## 6. Optional extras (skip by default)
 

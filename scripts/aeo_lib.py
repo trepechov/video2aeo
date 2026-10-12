@@ -3,8 +3,12 @@ yt-aeo core library (stdlib only).
 
 Deterministic parts of the pipeline – the LLM never does these:
   * transcript parsing (YouTube "MM:SS text" paste, VTT, SRT, JSON segments)
-  * rendering episode.json -> youtube-description.txt, article.wp.html, schema.jsonld
+  * rendering episode.json -> youtube-description.txt, article.wp.html (+ schema.jsonld, wp-post-fields.json),
+    facebook-post.txt – each output independently, so a command can render only its own file
   * validation (YouTube limits, chapter rules, Gutenberg block balance, FAQ parity, placeholders)
+
+Episode folder layout: the paste-ready outputs sit in the folder itself, everything else (episode.json, transcripts,
+schema, review sheet, push state) lives in its `work/` subfolder. Older flat folders are still read.
 
 Used by scripts/aeo.py (CLI) and server/server.py (local MCP tools).
 """
@@ -31,6 +35,11 @@ GENERIC_CHAPTERS = {
 }
 YT_DESCRIPTION_LIMIT = 5000
 YT_DESCRIPTION_MARGIN = 100
+FB_HOOK_SOFT_LIMIT = 150  # heuristic: the feed cuts long posts behind „See more“, so the first line must carry the answer
+
+WORK_DIR = "work"
+OUTPUT_FILES = {"youtube": "youtube-description.txt", "wordpress": "article.wp.html", "facebook": "facebook-post.txt"}
+OUTPUT_ORDER = ("youtube", "wordpress", "facebook")
 
 # ----------------------------------------------------------------------------
 # config
@@ -38,6 +47,30 @@ YT_DESCRIPTION_MARGIN = 100
 
 def load_json(path: Path | str):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def work_dir(ep_dir: Path) -> Path:
+    """The folder for working files (created on demand by the writers)."""
+    return Path(ep_dir) / WORK_DIR
+
+
+def work_file(ep_dir: Path, name: str) -> Path:
+    """Where to write a working file: <episode>/work/<name>."""
+    d = work_dir(ep_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    return d / name
+
+
+def find_work_file(ep_dir: Path, name: str) -> Path:
+    """Where to read a working file: work/ first, then the episode folder itself (older flat layout)."""
+    for base in (work_dir(ep_dir), Path(ep_dir)):
+        if (base / name).exists():
+            return base / name
+    return work_dir(ep_dir) / name
+
+
+def load_episode(ep_dir: Path) -> dict:
+    return load_json(find_work_file(ep_dir, "episode.json"))
 
 
 def load_brand(override: Path | None = None) -> dict:
@@ -411,13 +444,12 @@ def segments_to_text(segs: list[dict], para_seconds: int = 30) -> str:
 
 
 def write_raw_transcript(segs: list[dict], out_dir: Path, source: str) -> dict:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "transcript.raw.json").write_text(
+    work_file(out_dir, "transcript.raw.json").write_text(
         json.dumps({"source": source, "segments": segs}, ensure_ascii=False, indent=1), encoding="utf-8")
-    (out_dir / "transcript.raw.txt").write_text(segments_to_text(segs), encoding="utf-8")
+    work_file(out_dir, "transcript.raw.txt").write_text(segments_to_text(segs), encoding="utf-8")
     dur = segs[-1]["start"] if segs else 0
     return {"segments": len(segs), "last_timestamp": fmt_ts(dur), "words": sum(len(s["text"].split()) for s in segs),
-            "files": ["transcript.raw.json", "transcript.raw.txt"], "source": source}
+            "files": [f"{WORK_DIR}/transcript.raw.json", f"{WORK_DIR}/transcript.raw.txt"], "source": source}
 
 # ----------------------------------------------------------------------------
 # YouTube URL helpers
@@ -680,7 +712,31 @@ def render_article(ep: dict, brand: dict, transcript_md: str | None = None, sche
     return "\n\n".join(B) + "\n"
 
 # ----------------------------------------------------------------------------
-# 3) schema.org JSON-LD
+# 3) Facebook post
+# ----------------------------------------------------------------------------
+
+def render_facebook(ep: dict, brand: dict) -> str:
+    """ep["facebook"] = {hook, points[], question?, hashtags[]}. Link lines and the optional brand footer are added here."""
+    fb, cfg = ep["facebook"], brand.get("facebook") or {}
+    out = [plain(fb["hook"]).strip(), ""]
+    out += [f"• {plain(x)}" for x in fb.get("points", [])]
+    if fb.get("points"):
+        out.append("")
+    if fb.get("question"):
+        out += [plain(fb["question"]).strip(), ""]
+    if ep.get("article", {}).get("slug"):
+        out.append(f"{cfg.get('article_label', '📖 Full answer:')} {article_url(ep, brand)}")
+    out.append(f"{cfg.get('watch_label', '▶ Watch the episode:')} {watch_url(ep['video']['id'])}")
+    footer = (cfg.get("footer") or "").strip()
+    if footer:
+        out += ["", footer]
+    tags = fb.get("hashtags") or []
+    if tags:
+        out += ["", " ".join(h if h.startswith("#") else "#" + h for h in tags[:5])]
+    return "\n".join(out).strip() + "\n"
+
+# ----------------------------------------------------------------------------
+# 4) schema.org JSON-LD
 # ----------------------------------------------------------------------------
 
 def render_schema(ep: dict, brand: dict) -> dict:
@@ -731,24 +787,58 @@ def render_schema(ep: dict, brand: dict) -> dict:
 # package = all renders
 # ----------------------------------------------------------------------------
 
-def render_package(ep_dir: Path, brand: dict) -> dict:
-    ep = load_json(ep_dir / "episode.json")
-    tr_path = ep_dir / (ep.get("transcript_file") or "transcript.edited.md")
-    transcript_md = tr_path.read_text(encoding="utf-8") if tr_path.exists() else None
-    schema = render_schema(ep, brand)
-    files = {
-        "youtube-description.txt": render_description(ep, brand),
-        "schema.jsonld": json.dumps(schema, ensure_ascii=False, indent=2) + "\n",
-        "article.wp.html": render_article(ep, brand, transcript_md, schema),
-    }
-    for name, content in files.items():
-        (ep_dir / name).write_text(content, encoding="utf-8")
-    meta = {k: ep["article"].get(k) for k in ("seo_title", "slug", "meta_description", "focus_keyphrase", "category", "tags")}
-    meta["title"] = ep["video"]["title"]
-    meta["url"] = article_url(ep, brand)
-    (ep_dir / "wp-post-fields.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"written": list(files) + ["wp-post-fields.json"], "description_chars": len(files["youtube-description.txt"]),
-            "transcript_included": transcript_md is not None}
+def available_outputs(ep: dict) -> list[str]:
+    """Outputs whose content exists in episode.json: the YouTube description is the core, the others are added by
+    their own commands (wp-article writes sections/faq, fb-post writes facebook)."""
+    out = ["youtube"]
+    if ep.get("sections") and ep.get("faq"):
+        out.append("wordpress")
+    if ep.get("facebook"):
+        out.append("facebook")
+    return out
+
+
+def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) -> dict:
+    """Render the requested outputs (default: every output whose content exists) into the episode folder.
+    Paste-ready files go to the folder itself, schema.jsonld to work/."""
+    ep_dir = Path(ep_dir)
+    ep = load_episode(ep_dir)
+    outputs = list(outputs) if outputs else available_outputs(ep)
+    unknown = [o for o in outputs if o not in OUTPUT_FILES]
+    if unknown:
+        return {"ok": False, "errors": [f"Unknown output {unknown}; use {list(OUTPUT_FILES)}."]}
+    written, skipped = [], []
+    result: dict = {}
+    if "youtube" in outputs:
+        text = render_description(ep, brand)
+        (ep_dir / OUTPUT_FILES["youtube"]).write_text(text, encoding="utf-8")
+        written.append(OUTPUT_FILES["youtube"])
+        result["description_chars"] = len(text)
+    if "wordpress" in outputs:
+        if not (ep.get("sections") and ep.get("faq")):
+            skipped.append("wordpress (episode.json has no sections/faq yet – run /yt-aeo:wp-article)")
+        else:
+            tr_path = find_work_file(ep_dir, ep.get("transcript_file") or "transcript.edited.md")
+            transcript_md = tr_path.read_text(encoding="utf-8") if tr_path.exists() else None
+            schema = render_schema(ep, brand)
+            work_file(ep_dir, "schema.jsonld").write_text(
+                json.dumps(schema, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            (ep_dir / OUTPUT_FILES["wordpress"]).write_text(render_article(ep, brand, transcript_md, schema), encoding="utf-8")
+            meta = {k: ep["article"].get(k) for k in ("seo_title", "slug", "meta_description", "focus_keyphrase",
+                                                       "category", "tags")}
+            meta["title"] = ep["video"]["title"]
+            meta["url"] = article_url(ep, brand)
+            (ep_dir / "wp-post-fields.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            written += [OUTPUT_FILES["wordpress"], "wp-post-fields.json", f"{WORK_DIR}/schema.jsonld"]
+            result["transcript_included"] = transcript_md is not None
+    if "facebook" in outputs:
+        if not ep.get("facebook"):
+            skipped.append("facebook (episode.json has no facebook block yet – run /yt-aeo:fb-post)")
+        else:
+            (ep_dir / OUTPUT_FILES["facebook"]).write_text(render_facebook(ep, brand), encoding="utf-8")
+            written.append(OUTPUT_FILES["facebook"])
+    return {"written": written, "skipped": skipped, **result}
 
 # ----------------------------------------------------------------------------
 # validation
@@ -790,91 +880,118 @@ def _block_balance(doc: str) -> list[str]:
     return errs
 
 
-def validate_package(ep_dir: Path, brand: dict) -> dict:
+def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) -> dict:
+    """Core checks (answer, questions, chapters) always run; each output is checked only when it is requested or its
+    file already exists, so the YouTube command never fails on a missing article."""
+    ep_dir = Path(ep_dir)
     errors, warnings, placeholders = [], [], set()
-    ep = load_json(ep_dir / "episode.json")
-    # episode.json essentials
-    for key in ("answer_short", "questions", "chapters", "faq", "article"):
+    ep = load_episode(ep_dir)
+    present = [o for o in OUTPUT_ORDER if (ep_dir / OUTPUT_FILES[o]).exists()]
+    outputs = list(outputs) if outputs else (present or ["youtube"])
+    wanted = {"answer_short", "questions", "chapters", "article"}
+    if "wordpress" in outputs:
+        wanted |= {"faq", "sections"}
+    if "facebook" in outputs:
+        wanted.add("facebook")
+    for key in sorted(wanted):
         if not ep.get(key):
             errors.append(f"episode.json is missing '{key}'.")
+    if ep.get("article") and not ep["article"].get("slug"):
+        errors.append("episode.json article.slug is missing (the description links to the article).")
     if len(re.findall(r"[.!?](\s|$)", ep.get("answer_short", ""))) > 4:
         warnings.append("answer_short is longer than ~3 sentences – keep it a direct answer.")
     if not (5 <= len(ep.get("questions", [])) <= 8):
         warnings.append("Aim for 5–8 questions in the mini-index.")
-    if not (5 <= len(ep.get("faq", [])) <= 8):
+    if "wordpress" in outputs and not (5 <= len(ep.get("faq", [])) <= 8):
         warnings.append("Aim for 5–8 FAQ entries.")
     e, w = validate_chapters(ep.get("chapters", []), ep["video"].get("duration_seconds"))
     errors += e
     warnings += w
     # description
-    d_path = ep_dir / "youtube-description.txt"
-    if d_path.exists():
-        d = d_path.read_text(encoding="utf-8")
-        placeholders |= set(PLACEHOLDER_RE.findall(d))
-        if "<" in d or ">" in d:
-            errors.append("YouTube description contains '<' or '>' – YouTube rejects these.")
-        if len(d) > YT_DESCRIPTION_LIMIT:
-            errors.append(f"Description is {len(d)} chars (limit {YT_DESCRIPTION_LIMIT}).")
-        elif len(d) > YT_DESCRIPTION_LIMIT - YT_DESCRIPTION_MARGIN:
-            warnings.append(f"Description is {len(d)} chars – under {YT_DESCRIPTION_MARGIN} chars of margin.")
-        body = d.strip()
-        top, _ = _promo_and_footer(brand["description"])
-        header = (brand["description"].get("header") or "").strip()
-        if header and body.startswith(header):
-            if len(header) > 300 or header.count("\n") > 3:
-                warnings.append("The description header is long – the direct answer should start within ~3 lines.")
-            body = body[len(header):].lstrip().removeprefix(DESC_SEP).strip()
-        if top and body.startswith(top):
-            if len(top) > 300 or top.count("\n") > 3:
-                warnings.append("The promo block at the top is long – the direct answer should start within ~3 lines.")
-            body = body[len(top):].lstrip().removeprefix(DESC_SEP).strip()
-        if brand["description"].get("promo_position", "end") not in PROMO_POSITIONS:
-            warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS} – rendered at the end.")
-        first = body.split("\n", 1)[0]
-        if len(first) < 80:
-            warnings.append("Description should open with a 2–3 sentence direct answer.")
-    else:
-        errors.append("youtube-description.txt not rendered yet.")
+    if "youtube" in outputs:
+        d_path = ep_dir / OUTPUT_FILES["youtube"]
+        if d_path.exists():
+            d = d_path.read_text(encoding="utf-8")
+            placeholders |= set(PLACEHOLDER_RE.findall(d))
+            if "<" in d or ">" in d:
+                errors.append("YouTube description contains '<' or '>' – YouTube rejects these.")
+            if len(d) > YT_DESCRIPTION_LIMIT:
+                errors.append(f"Description is {len(d)} chars (limit {YT_DESCRIPTION_LIMIT}).")
+            elif len(d) > YT_DESCRIPTION_LIMIT - YT_DESCRIPTION_MARGIN:
+                warnings.append(f"Description is {len(d)} chars – under {YT_DESCRIPTION_MARGIN} chars of margin.")
+            body = d.strip()
+            top, _ = _promo_and_footer(brand["description"])
+            header = (brand["description"].get("header") or "").strip()
+            if header and body.startswith(header):
+                if len(header) > 300 or header.count("\n") > 3:
+                    warnings.append("The description header is long – the direct answer should start within ~3 lines.")
+                body = body[len(header):].lstrip().removeprefix(DESC_SEP).strip()
+            if top and body.startswith(top):
+                if len(top) > 300 or top.count("\n") > 3:
+                    warnings.append("The promo block at the top is long – the direct answer should start within ~3 lines.")
+                body = body[len(top):].lstrip().removeprefix(DESC_SEP).strip()
+            if brand["description"].get("promo_position", "end") not in PROMO_POSITIONS:
+                warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS} – rendered at the end.")
+            first = body.split("\n", 1)[0]
+            if len(first) < 80:
+                warnings.append("Description should open with a 2–3 sentence direct answer.")
+        else:
+            errors.append("youtube-description.txt not rendered yet.")
     # article
-    a_path = ep_dir / "article.wp.html"
-    if a_path.exists():
-        a = a_path.read_text(encoding="utf-8")
-        placeholders |= set(PLACEHOLDER_RE.findall(a))
-        errors += _block_balance(a)
-        first_block = re.search(r"<!-- wp:([a-z/-]+)", a)
-        if not first_block or first_block.group(1) != "embed":
-            errors.append("The first article block must be the YouTube embed.")
-        if "aeo-answer" not in a:
-            errors.append("Article is missing the answer block.")
-        if re.search(r"<h[23][^>]*>\s*</h[23]>", a):
-            errors.append("Empty heading in article.")
-    else:
-        errors.append("article.wp.html not rendered yet.")
-    # schema
-    s_path = ep_dir / "schema.jsonld"
-    if s_path.exists():
-        try:
-            schema = json.loads(s_path.read_text(encoding="utf-8"))
-            placeholders |= set(PLACEHOLDER_RE.findall(json.dumps(schema, ensure_ascii=False)))
-            faq_nodes = [n for n in schema["@graph"] if n.get("@type") == "FAQPage"]
-            if faq_nodes:
-                names = [q["name"] for q in faq_nodes[0]["mainEntity"]]
-                if names != [plain(f["q"]) for f in ep.get("faq", [])]:
-                    errors.append("FAQ schema differs from the visible FAQ.")
-            vids = [n for n in schema["@graph"] if n.get("@type") == "VideoObject"]
-            if not vids or not vids[0].get("uploadDate"):
-                errors.append("VideoObject needs uploadDate.")
-        except json.JSONDecodeError as ex:
-            errors.append(f"schema.jsonld is not valid JSON: {ex}")
+    if "wordpress" in outputs:
+        a_path = ep_dir / OUTPUT_FILES["wordpress"]
+        if a_path.exists():
+            a = a_path.read_text(encoding="utf-8")
+            placeholders |= set(PLACEHOLDER_RE.findall(a))
+            errors += _block_balance(a)
+            first_block = re.search(r"<!-- wp:([a-z/-]+)", a)
+            if not first_block or first_block.group(1) != "embed":
+                errors.append("The first article block must be the YouTube embed.")
+            if "aeo-answer" not in a:
+                errors.append("Article is missing the answer block.")
+            if re.search(r"<h[23][^>]*>\s*</h[23]>", a):
+                errors.append("Empty heading in article.")
+        else:
+            errors.append("article.wp.html not rendered yet.")
+        s_path = find_work_file(ep_dir, "schema.jsonld")
+        if s_path.exists():
+            try:
+                schema = json.loads(s_path.read_text(encoding="utf-8"))
+                placeholders |= set(PLACEHOLDER_RE.findall(json.dumps(schema, ensure_ascii=False)))
+                faq_nodes = [n for n in schema["@graph"] if n.get("@type") == "FAQPage"]
+                if faq_nodes:
+                    names = [q["name"] for q in faq_nodes[0]["mainEntity"]]
+                    if names != [plain(f["q"]) for f in ep.get("faq", [])]:
+                        errors.append("FAQ schema differs from the visible FAQ.")
+                vids = [n for n in schema["@graph"] if n.get("@type") == "VideoObject"]
+                if not vids or not vids[0].get("uploadDate"):
+                    errors.append("VideoObject needs uploadDate.")
+            except json.JSONDecodeError as ex:
+                errors.append(f"schema.jsonld is not valid JSON: {ex}")
+    # facebook
+    if "facebook" in outputs:
+        f_path = ep_dir / OUTPUT_FILES["facebook"]
+        fb = ep.get("facebook") or {}
+        if f_path.exists():
+            placeholders |= set(PLACEHOLDER_RE.findall(f_path.read_text(encoding="utf-8")))
+        else:
+            errors.append("facebook-post.txt not rendered yet.")
+        if fb.get("hook") and len(plain(fb["hook"])) > FB_HOOK_SOFT_LIMIT:
+            warnings.append(f"Facebook hook is over {FB_HOOK_SOFT_LIMIT} characters – the feed may cut it behind „See more“.")
+        if fb and not (2 <= len(fb.get("points", [])) <= 6):
+            warnings.append("Facebook post: aim for 3–5 short points.")
     # numbers must be traceable to the transcript or claims
     corpus = ""
     for f in ("transcript.raw.txt", "transcript.edited.md"):
-        if (ep_dir / f).exists():
-            corpus += (ep_dir / f).read_text(encoding="utf-8")
+        path = find_work_file(ep_dir, f)
+        if path.exists():
+            corpus += path.read_text(encoding="utf-8")
     corpus += " ".join(c.get("text", "") + " " + c.get("note", "") for c in ep.get("claims", []))
     corpus_n = corpus.replace(" ", "").replace(",", ".")
+    fb = ep.get("facebook") or {}
     copy = " ".join([ep.get("answer_short", ""), *ep.get("key_takeaways", []),
-                     *(f["a"] for f in ep.get("faq", [])), *(s.get("answer", "") for s in ep.get("sections", []))])
+                     *(f["a"] for f in ep.get("faq", [])), *(s.get("answer", "") for s in ep.get("sections", [])),
+                     fb.get("hook", ""), *fb.get("points", []), fb.get("question", "")])
     if corpus:
         for num in sorted(set(re.findall(r"\d+(?:[.,]\d+)?", copy))):
             n = num.replace(",", ".")
@@ -885,25 +1002,35 @@ def validate_package(ep_dir: Path, brand: dict) -> dict:
                    and c.get("type") in ("fact", "forecast")]
     if open_claims:
         warnings.append(f"{len(open_claims)} fact/forecast claims are still 'unverified' (Gate A).")
-    return {"ok": not errors, "errors": errors, "warnings": warnings, "placeholders": sorted(placeholders)}
+    return {"ok": not errors, "errors": errors, "warnings": warnings, "placeholders": sorted(placeholders),
+            "outputs_checked": outputs}
+
+
+def write_review(ep_dir: Path, brand: dict, result: dict) -> Path:
+    """Write the review sheet to work/review.md."""
+    path = work_file(ep_dir, "review.md")
+    path.write_text(review_sheet(ep_dir, brand, result), encoding="utf-8")
+    return path
 
 
 def review_sheet(ep_dir: Path, brand: dict, result: dict) -> str:
-    ep = load_json(ep_dir / "episode.json")
+    ep = load_episode(ep_dir)
+    checked = ", ".join(result.get("outputs_checked", [])) or "youtube"
     lines = [f"# Review – {ep['video']['title']}", "",
-             f"**Status:** {'✅ ready for Gate B/C' if result['ok'] else '❌ fix errors first'}", ""]
+             f"**Status:** {'✅ ready for approval' if result['ok'] else '❌ fix errors first'} (checked: {checked})", ""]
     if result["errors"]:
         lines += ["## Errors (block publishing)", *[f"- {e}" for e in result["errors"]], ""]
     if result["warnings"]:
         lines += ["## Warnings", *[f"- {w}" for w in result["warnings"]], ""]
     if result["placeholders"]:
         lines += ["## Placeholders to fill", *[f"- `{p}`" for p in result["placeholders"]], ""]
-    art = ep["article"]
-    lines += ["## WordPress fields", f"- Title (= video title): {ep['video']['title']}",
-              f"- SEO title: {art.get('seo_title', '')}", f"- Slug: {art.get('slug', '')}",
-              f"- Meta description: {art.get('meta_description', '')}",
-              f"- Focus keyphrase: {art.get('focus_keyphrase', '')}",
-              f"- Category: {art.get('category', '')}", f"- Tags: {', '.join(art.get('tags', []))}", ""]
+    art = ep.get("article") or {}
+    if "wordpress" in result.get("outputs_checked", []):
+        lines += ["## WordPress fields", f"- Title (= video title): {ep['video']['title']}",
+                  f"- SEO title: {art.get('seo_title', '')}", f"- Slug: {art.get('slug', '')}",
+                  f"- Meta description: {art.get('meta_description', '')}",
+                  f"- Focus keyphrase: {art.get('focus_keyphrase', '')}",
+                  f"- Category: {art.get('category', '')}", f"- Tags: {', '.join(art.get('tags', []))}", ""]
     lines += ["## Fact-check", "| t | speaker | type | status | claim | note |", "|---|---|---|---|---|---|"]
     for c in ep.get("claims", []):
         t = fmt_ts(c["t"]) if c.get("t") is not None else ""
@@ -911,7 +1038,9 @@ def review_sheet(ep_dir: Path, brand: dict, result: dict) -> str:
                      f"{c.get('text', '').replace('|', '/')} | {c.get('note', '').replace('|', '/')} |")
     g = ep.get("gates", {})
     lines += ["", "## Gates",
-              f"- [{'x' if g.get('A') else ' '}] Gate A – transcript, names, numbers, chapters {g.get('A') or ''}",
-              f"- [{'x' if g.get('B') else ' '}] Gate B – copy & SEO fields {g.get('B') or ''}",
-              f"- [{'x' if g.get('C') else ' '}] Gate C – compliance & publish go {g.get('C') or ''}", ""]
+              f"- [{'x' if g.get('A') else ' '}] Gate A – transcript, names, numbers, chapters, title {g.get('A') or ''}",
+              f"- [{'x' if g.get('youtube') or g.get('B') else ' '}] YouTube description approved "
+              f"{g.get('youtube') or g.get('B') or ''}",
+              f"- [{'x' if g.get('wordpress') else ' '}] WordPress article approved {g.get('wordpress') or ''}",
+              f"- [{'x' if g.get('facebook') else ' '}] Facebook post approved {g.get('facebook') or ''}", ""]
     return "\n".join(lines)

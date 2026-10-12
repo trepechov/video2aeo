@@ -95,11 +95,9 @@ check("ADS" in L._promo_and_footer(alias)[1] and "{{" not in L._promo_and_footer
 check("{{SCHEDULE}}" in L._promo_and_footer(desc(footer="x {{SCHEDULE}}"))[1], "literal {{X}} must stay visible")
 
 # --- validator with the promo at the top (incl. a promo that contains a separator) ------------------
+import shutil  # noqa: E402
 ep_dir = TMP / "ep"
-ep_dir.mkdir()
-for f in (ROOT / "examples/demo").iterdir():
-    if f.is_file():
-        (ep_dir / f.name).write_bytes(f.read_bytes())
+shutil.copytree(ROOT / "examples/demo", ep_dir)
 brand = L.load_brand(ROOT / "examples/demo/brand.json")
 for promo in ("👉 Offer: https://example.org/a", f"Line 1\n{L.DESC_SEP}\nLine 2"):
     brand["description"].update(promo=promo, promo_position="top")
@@ -118,9 +116,40 @@ brand["description"].update(header="📢 HEADER LINE", promo="TOPADS", promo_pos
 L.render_package(ep_dir, brand)
 text = (ep_dir / "youtube-description.txt").read_text(encoding="utf-8")
 check(text.startswith("📢 HEADER LINE") and text.index("TOPADS") < text.index(brand_answer := L.plain(
-    L.load_json(ep_dir / "episode.json")["answer_short"]).strip()[:40]), "header first, then promo, then answer")
+    L.load_episode(ep_dir)["answer_short"]).strip()[:40]), "header first, then promo, then answer")
 res = L.validate_package(ep_dir, brand)
 check(res["ok"] and not any("direct answer" in w for w in res["warnings"]), f"validate with header: {res}")
+
+# --- per-command outputs: the YouTube command works without article or Facebook content -----------
+yt_dir = TMP / "yt-only"
+shutil.copytree(ROOT / "examples/demo", yt_dir)
+ep = L.load_json(yt_dir / "work/episode.json")
+for key in ("sections", "faq", "key_takeaways", "facebook"):
+    ep.pop(key, None)
+(yt_dir / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
+for name in ("article.wp.html", "facebook-post.txt", "wp-post-fields.json", "work/schema.jsonld"):
+    (yt_dir / name).unlink()
+r = L.render_package(yt_dir, brand)
+check(r["written"] == ["youtube-description.txt"], f"auto outputs must be youtube only: {r}")
+check(not (yt_dir / "article.wp.html").exists() and not (yt_dir / "facebook-post.txt").exists(), "extra outputs rendered")
+res = L.validate_package(yt_dir, brand)
+check(res["ok"] and res["outputs_checked"] == ["youtube"], f"youtube-only validate: {res}")
+r = L.render_package(yt_dir, brand, ["wordpress", "facebook"])
+check(r["written"] == [] and len(r["skipped"]) == 2, f"incomplete outputs must be skipped, not half-written: {r}")
+check(not L.validate_package(yt_dir, brand, ["wordpress"])["ok"], "wordpress validate must fail without sections/faq")
+L.write_review(yt_dir, brand, res)
+check((yt_dir / "work/review.md").exists() and not (yt_dir / "review.md").exists(), "review.md belongs in work/")
+raw = L.write_raw_transcript([{"start": 0.0, "text": "hello"}], yt_dir, "test")
+check(all(f.startswith("work/") for f in raw["files"]) and (yt_dir / "work/transcript.raw.txt").exists(),
+      "raw transcript must be written to work/")
+
+# --- older flat folders (everything in one folder) are still read ----------------------------------
+flat = TMP / "flat"
+flat.mkdir()
+for f in (ROOT / "examples/demo/work").iterdir():
+    (flat / f.name).write_bytes(f.read_bytes())
+check(L.render_package(flat, brand)["written"][0] == "youtube-description.txt", "flat layout not rendered")
+check(L.validate_package(flat, brand)["ok"], "flat layout not validated")
 
 # --- empty brand glossary is reported ---------------------------------------------------------------
 check(any("glossary" in w for w in L.setup_status()["warnings"]) or L.setup_status()["glossary_entries"] > 0,

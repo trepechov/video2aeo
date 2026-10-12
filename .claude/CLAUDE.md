@@ -17,12 +17,11 @@ Content language is **Bulgarian**; code, comments and docs are English.
 
 ## Read first
 - `docs/plugin-build-plan.md` – architecture, instruction layers, roadmap (phase 1a manual MVP → 1b automation → phase 2 WordPress plugin → phase 3), decisions.
-- `skills/aeo-episode/references/aeo-rules.md` – the general AEO guidelines shipped with the plugin.
-- `skills/aeo-episode/references/episode-schema.md` – `episode.json`, the single source of truth.
+- `instructions/` – the general instructions, one file per output: `aeo-rules.md`, `youtube-description.md`, `wordpress-article.md`, `facebook-post.md`, plus `episode-schema.md` (`work/episode.json`, the single source of truth).
 
 ## Layout
 - `.claude-plugin/plugin.json` – manifest (plugin name `yt-aeo`; commands are `/yt-aeo:<skill>`).
-- `skills/` – `aeo-episode` (orchestrator), `yt-description`, `wp-article`, `setup`.
+- `skills/` – `episode` (`/yt-aeo:episode`: transcript → knowledge map → YouTube description), `wp-article`, `fb-post`, `setup`. Each output command renders only its own file (`outputs` arg of `render_package`/`validate_package`).
 - `agents/` – `transcript-editor`, `knowledge-mapper`, `aeo-reviewer`. Frontmatter `description` must be a YAML block scalar (`|`).
 - `.mcp.json` + `server/server.py` – local stdio MCP server `yt-aeo-tools` (stdlib-only Python).
 - `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
@@ -67,7 +66,7 @@ Iterate in Claude Code: `claude --plugin-dir .`
 1. Bump `version` in `.claude-plugin/plugin.json` (Desktop may keep a stale copy of the same version).
 2. `dev/package.sh` → `dist/yt-aeo-<version>.plugin` (until the GitHub marketplace is set up).
 3. Desktop → Settings → Plugins: remove the old plugin, upload the new file (or push and click Update).
-4. New **Cowork** task with a working folder → `/yt-aeo:aeo-episode` + transcript `.txt` (plain chat loads skills only).
+4. New **Cowork** task with a working folder → `/yt-aeo:episode` + transcript `.txt` (plain chat loads skills only).
 
 The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python3`, 3.9 here), not Homebrew's (3.14).
 

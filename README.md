@@ -1,39 +1,57 @@
 # yt-aeo – YouTube AEO Episode Agent
 
-A Claude plugin that turns a podcast/video episode transcript into an AEO package. Add the transcript `.txt` of a new
-episode and get, in one folder:
+A Claude plugin that turns a podcast/video episode transcript into an AEO package, one command per output:
 
-| Output | What it is |
-|---|---|
-| `transcript.raw.txt` | The transcript, grouped in timestamped paragraphs |
-| `transcript.edited.md` | Edited, speaker-labelled, citable transcript (sponsor reads tagged) |
-| `episode.json` | The knowledge map – single source of truth for everything below |
-| `youtube-description.txt` | AEO description: direct answer → questions → article link → chapters → footer |
-| `article.wp.html` | WordPress Gutenberg article: **video embed first**, answer block, takeaways, chapter links, question-H2 sections, tables, FAQ, transcript, authors, disclaimer, JSON-LD |
-| `schema.jsonld` | Article + VideoObject (with chapter Clips) + FAQPage + Organization |
-| `wp-post-fields.json` | Title (= video title), slug, SEO title, meta description, keyphrase, category, tags |
-| `review.md` | Errors, warnings, placeholders, fact-check table, gate sign-offs |
+| Command | Produces | When |
+|---|---|---|
+| `/yt-aeo:episode <url>` | The knowledge map and the **YouTube description** with chapters and title | Main command – run first |
+| `/yt-aeo:wp-article` | The **WordPress (Gutenberg) article** with the video embedded first, FAQ, schema and SEO fields | After `episode`, when the article is wanted |
+| `/yt-aeo:fb-post` | The **Facebook post** teaser | After `episode`, when the post is wanted |
+
+More outputs (Instagram, newsletter …) follow the same pattern: one instruction file, one command.
+
+Each episode gets one folder. What you paste is in the folder itself; everything else is in `work/`:
+
+```
+episodes/2026-09-dk-36-naem-ili-pokupka/
+├── youtube-description.txt     AEO description: direct answer → questions → article link → chapters → footer
+├── article.wp.html             Gutenberg article: video embed first, answer, takeaways, chapters, FAQ, transcript, JSON-LD
+├── wp-post-fields.json         Title (= video title), slug, SEO title, meta description, keyphrase, category, tags
+├── facebook-post.txt           Hook, key points, question, links, hashtags
+└── work/                       working files – not meant to be read
+    ├── episode.json            the knowledge map – single source of truth for every output
+    ├── transcript.raw.txt / .json, transcript.edited.md
+    └── schema.jsonld, review.md (errors, warnings, fact-check, approvals), wp-result.json
+```
 
 You paste the description into YouTube Studio and the article into the WordPress Code editor. Automatic subtitle
 download and WordPress draft push exist but are optional (see `docs/plugin-build-plan.md` §3.3).
 
 ## Who does what
 
-- **Claude writes all text** (transcript edit, questions, chapters, description, article, FAQ), guided by the skills and agents.
+- **Claude writes all text** (transcript edit, questions, chapters, description, article, FAQ, posts), guided by the
+  instruction files in `instructions/` (one per output) and the agents.
 - **Scripts do the mechanical parts** – import transcripts, assemble formats, enforce limits. The marketer never runs them by hand.
-- **People approve** at three gates: A (facts, names, chapters, title), B (copy & SEO), C (compliance & publish go).
+- **People approve**: Gate A (facts, names, chapters, title) in `episode`, then one approval per output
+  (description, article, Facebook post).
+
+## Instructions
+
+`instructions/` holds the plugin's general instructions – `aeo-rules.md` (principles), `youtube-description.md`,
+`wordpress-article.md` (structure, SEO fields, tags, internal links), `facebook-post.md`, and `episode-schema.md`.
+Brand additions go to `~/.yt-aeo/guidelines/<same file name>`. See `instructions/README.md`.
 
 ## Components
 
 | Type | Name | Purpose |
 |---|---|---|
-| Skill | `aeo-episode` | Orchestrator: `/yt-aeo:aeo-episode` |
-| Skill | `yt-description` | Description, chapters and title rules |
-| Skill | `wp-article` | Article structure, block order, SEO fields |
+| Skill | `episode` | `/yt-aeo:episode` – transcript → knowledge map → YouTube description |
+| Skill | `wp-article` | `/yt-aeo:wp-article` – article for an episode |
+| Skill | `fb-post` | `/yt-aeo:fb-post` – Facebook post for an episode |
 | Skill | `setup` | One-time setup on the marketer's computer |
 | Agent | `transcript-editor` | Raw transcript → edited transcript |
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
-| Agent | `aeo-reviewer` | Independent pre-Gate-B review |
+| Agent | `aeo-reviewer` | Independent review before each approval |
 | MCP (local) | `yt-aeo-tools` | `setup_status`, `check_environment`, `save_setup`, `import_transcript`, `render_package`, `validate_package`; optional `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
 Agents and the local tool server load in **Cowork tasks running on the computer** (Claude desktop app) and in Claude
@@ -42,7 +60,7 @@ Code. In plain chat only the skills load: the user pastes the transcript and the
 ## Brand, glossary and guidelines
 
 The plugin is brand-neutral and ships general AEO guidelines and best practices
-(`skills/aeo-episode/references/aeo-rules.md`). Each user's brand lives on their computer in `~/.yt-aeo/`:
+(`instructions/aeo-rules.md`). Each user's brand lives on their computer in `~/.yt-aeo/`:
 
 | File | Purpose |
 |---|---|
@@ -100,7 +118,7 @@ are needed for public videos.
 3. Run `/yt-aeo:setup` once and answer the questions (channel, header/footer, glossary, guidelines).
 4. Optional: `brew install yt-dlp` for automatic subtitles. Python is preinstalled on macOS.
 
-That is all – then `/yt-aeo:aeo-episode` with the episode address or transcript.
+That is all – then `/yt-aeo:episode` with the episode address or transcript.
 
 ## Updating
 
@@ -110,7 +128,7 @@ Your brand settings in `~/.yt-aeo/` are not touched.
 
 ## Usage
 
-In a Cowork task with a working folder: run `/yt-aeo:aeo-episode` and add or attach the transcript `.txt`.
+In a Cowork task with a working folder: run `/yt-aeo:episode` and add or attach the transcript `.txt`; then `/yt-aeo:wp-article` and `/yt-aeo:fb-post` for the other outputs.
 
 ## Developing (Claude Code) and testing (Claude Desktop)
 
@@ -131,7 +149,7 @@ Test the installed plugin in the Claude desktop app:
    does both and runs the checks.
 2. `dev/package.sh` → `dist/yt-aeo-<version>.plugin`.
 3. Settings → Plugins: remove the old version, upload the new file (or push to GitHub and use **Update**).
-4. Open a Cowork task with a working folder and run `/yt-aeo:aeo-episode`.
+4. Open a Cowork task with a working folder and run `/yt-aeo:episode`.
 
 ### Releasing a new version
 

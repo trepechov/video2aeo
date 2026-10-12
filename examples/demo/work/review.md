@@ -1,6 +1,6 @@
 # Review – Наем или покупка на жилище: кое е по-изгодно? | Въпрос на седмицата Еп. 1
 
-**Status:** ✅ ready for Gate B/C
+**Status:** ✅ ready for approval (checked: youtube, wordpress, facebook)
 
 ## Placeholders to fill
 - `{{DATE_PUBLISHED}}`
@@ -24,6 +24,7 @@
 | 09:05 | Мария Георгиева | fact | verified | Ипотечна лихва 3%, самоучастие 20% | Fictional demo data. |
 
 ## Gates
-- [ ] Gate A – transcript, names, numbers, chapters 
-- [ ] Gate B – copy & SEO fields 
-- [ ] Gate C – compliance & publish go 
+- [ ] Gate A – transcript, names, numbers, chapters, title 
+- [ ] YouTube description approved 
+- [ ] WordPress article approved 
+- [ ] Facebook post approved 

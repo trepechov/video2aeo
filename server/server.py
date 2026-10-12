@@ -18,6 +18,9 @@ import aeo_net as N  # noqa: E402
 
 SERVER = {"name": "yt-aeo-tools", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
+OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wordpress", "facebook"]},
+           "description": "Which outputs to handle. Omit for every output that already has content in episode.json. "
+                          "/yt-aeo:episode passes [\"youtube\"], /yt-aeo:wp-article [\"wordpress\"], /yt-aeo:fb-post [\"facebook\"]."}
 DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-10-dk-08-danatsi"}
 TOOLS = [
     {"name": "setup_status",
@@ -45,22 +48,24 @@ TOOLS = [
      "description": "Get title, channel, thumbnail, upload date, duration and the current description of a YouTube video.",
      "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
     {"name": "fetch_transcript",
-     "description": "Download the video's subtitles (in the brand language by default) from YouTube to transcript.raw.json/.txt in the episode folder. "
+     "description": "Download the video's subtitles (in the brand language by default) from YouTube to work/transcript.raw.json/.txt in the episode folder. "
                     "Runs on this computer. On failure returns the manual fallback.",
      "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "episode_dir": DIR,
                                                        "lang": {"type": "string", "description": "Subtitle language code; defaults to the brand language"}},
                      "required": ["url", "episode_dir"]}},
     {"name": "import_transcript",
-     "description": "Parse a transcript file the user downloaded or pasted (VTT, SRT, YouTube 'MM:SS text' copy, JSON) into transcript.raw.*",
+     "description": "Parse a transcript file the user downloaded or pasted (VTT, SRT, YouTube 'MM:SS text' copy, JSON) into work/transcript.raw.*",
      "inputSchema": {"type": "object", "properties": {"file": {"type": "string"}, "episode_dir": DIR},
                      "required": ["file", "episode_dir"]}},
     {"name": "render_package",
-     "description": "Render episode.json (+ transcript.edited.md) into youtube-description.txt, article.wp.html (Gutenberg), "
-                    "schema.jsonld and wp-post-fields.json. Deterministic – never edit those files by hand; edit episode.json and re-render.",
-     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}, "required": ["episode_dir"]}},
+     "description": "Render work/episode.json into the requested outputs: youtube-description.txt, article.wp.html (Gutenberg) "
+                    "+ wp-post-fields.json + work/schema.jsonld, facebook-post.txt. Deterministic – never edit those files by hand; "
+                    "edit episode.json and re-render.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "outputs": OUTPUTS}, "required": ["episode_dir"]}},
     {"name": "validate_package",
-     "description": "Check YouTube limits, chapter rules, block markup, FAQ/schema parity, placeholders and number traceability. Writes review.md.",
-     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}, "required": ["episode_dir"]}},
+     "description": "Check YouTube limits, chapter rules, block markup, FAQ/schema parity, placeholders and number traceability for the "
+                    "requested outputs. Writes work/review.md.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "outputs": OUTPUTS}, "required": ["episode_dir"]}},
     {"name": "wp_push_draft",
      "description": "Create or update the article in WordPress as a DRAFT (never publishes). Requires Gate B signed and "
                     "~/.yt-aeo/config.json. Only call when the user explicitly asks to push the draft.",
@@ -95,11 +100,12 @@ def call(name, args):
         segs = L.parse_transcript_text(Path(args["file"]).read_text(encoding="utf-8"))
         return L.write_raw_transcript(segs, Path(args["episode_dir"]), f"import:{Path(args['file']).name}")
     d = Path(args["episode_dir"])
+    outputs = args.get("outputs") or None
     if name == "render_package":
-        return L.render_package(d, _brand())
+        return L.render_package(d, _brand(), outputs)
     if name == "validate_package":
-        res = L.validate_package(d, _brand())
-        (d / "review.md").write_text(L.review_sheet(d, _brand(), res), encoding="utf-8")
+        res = L.validate_package(d, _brand(), outputs)
+        L.write_review(d, _brand(), res)
         return res
     if name == "wp_push_draft":
         return N.wp_create_draft(d, _brand())

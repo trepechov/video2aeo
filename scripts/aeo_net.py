@@ -110,8 +110,12 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
     else:
         errors.append("yt-dlp not found")
     return {"ok": False, "errors": errors,
-            "fallback": "Open the video in YouTube Studio → Subtitles → download .vtt/.srt, or on the watch page "
-                        "use '…' → Show transcript and copy it. Then call import_transcript with the file."}
+            "fallback": "Automatic download failed (YouTube may be blocking this computer's IP, or yt-dlp is not "
+                        "installed: brew install yt-dlp). Add the transcript by hand, any of: (1) YouTube Studio → "
+                        "Subtitles → download .vtt/.srt; (2) the watch page → '…' → Show transcript → copy the text; "
+                        "(3) an online YouTube-transcript service – paste the video address there and copy or "
+                        "download the result. Save it as a .txt/.vtt/.srt file (or paste it in the chat), then call "
+                        "import_transcript with the file."}
 
 # ----------------------------------------------------------------------------
 # WordPress draft
@@ -161,19 +165,21 @@ def wp_create_draft(ep_dir: Path, brand: dict, cfg_path: Path | None = None) -> 
     if not cfg:
         return {"ok": False, "error": "No WordPress credentials. Create ~/.yt-aeo/config.json with "
                                       "{\"wordpress\": {\"base_url\", \"username\", \"app_password\"}} (see setup skill)."}
-    check = L.validate_package(ep_dir, brand)
+    check = L.validate_package(ep_dir, brand, ["wordpress"])
     if not check["ok"]:
         return {"ok": False, "error": "Validation errors – fix before pushing.", "errors": check["errors"]}
-    ep = L.load_json(ep_dir / "episode.json")
-    if not (ep.get("gates") or {}).get("B"):
-        return {"ok": False, "error": "Gate B (editor approval of copy) is not signed in episode.json → gates.B."}
+    ep = L.load_episode(ep_dir)
+    gates = ep.get("gates") or {}
+    if not (gates.get("wordpress") or gates.get("B")):
+        return {"ok": False, "error": "The article is not approved: sign it in episode.json → gates.wordpress "
+                                      "(done by /yt-aeo:wp-article after the editor's approval)."}
     art = ep["article"]
     cat_ids, missing_cats = _term_ids(cfg, "categories", [art["category"]] if art.get("category") else [], create=False)
     tag_ids, _ = _term_ids(cfg, "tags", art.get("tags", []), create=True)
-    body = {"title": ep["video"]["title"], "content": (ep_dir / "article.wp.html").read_text(encoding="utf-8"),
+    body = {"title": ep["video"]["title"], "content": (ep_dir / L.OUTPUT_FILES["wordpress"]).read_text(encoding="utf-8"),
             "status": "draft", "slug": art.get("slug"), "excerpt": art.get("meta_description", ""),
             "categories": cat_ids, "tags": tag_ids}
-    state_file = ep_dir / "wp-result.json"
+    state_file = L.find_work_file(ep_dir, "wp-result.json")
     post_id = L.load_json(state_file).get("id") if state_file.exists() else None
     if post_id:
         current = _wp(cfg, "GET", f"posts/{post_id}", query={"context": "edit"})
@@ -186,6 +192,6 @@ def wp_create_draft(ep_dir: Path, brand: dict, cfg_path: Path | None = None) -> 
     result = {"ok": True, "id": post["id"], "status": post["status"], "preview": post.get("link"),
               "edit": cfg["base_url"].rstrip("/") + f"/wp-admin/post.php?post={post['id']}&action=edit",
               "missing_categories": missing_cats,
-              "manual": "Set SEO title / meta description / focus keyphrase in the SEO plugin panel (values in review.md)."}
-    state_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+              "manual": "Set SEO title / meta description / focus keyphrase in the SEO plugin panel (values in wp-post-fields.json)."}
+    L.work_file(ep_dir, "wp-result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

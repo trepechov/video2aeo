@@ -29,27 +29,39 @@ user's computer in `~/.yt-aeo/`, never in this repo. Developers keep brand files
 
 ```
 transcript .txt (added by the user)          [optional later: YouTube URL → fetch_transcript]
-  └─ aeo-episode skill (orchestrator, Claude)
-       ├─ import_transcript (code)               → transcript.raw.txt
-       ├─ transcript-editor agent                → transcript.edited.md
-       ├─ knowledge-mapper agent                 → episode.json   (single source of truth)
-       │    ⏸ GATE A  facts · names · chapters · title (shared by YouTube + article)
-       ├─ Claude writes copy into episode.json (yt-description + wp-article skills)
-       ├─ render_package (code)                  → youtube-description.txt · article.wp.html · schema.jsonld · wp-post-fields.json
-       ├─ validate_package (code)                → review.md (errors block publishing)
+  └─ /yt-aeo:episode (main command, Claude)                         → episodes/<date>-…/work/
+       ├─ import_transcript (code)               → work/transcript.raw.txt
+       ├─ transcript-editor agent                → work/transcript.edited.md
+       ├─ knowledge-mapper agent                 → work/episode.json   (core knowledge map, single source of truth)
+       │    ⏸ GATE A  facts · names · chapters · title (shared by every output)
+       ├─ Claude writes the description copy (instructions/youtube-description.md)
+       ├─ render_package / validate_package (code, outputs=youtube)  → youtube-description.txt · work/review.md
        ├─ aeo-reviewer agent                     → must-fix / should-fix list
-       │    ⏸ GATE B  copy & SEO        ⏸ GATE C  compliance & publish go
-       └─ hand-off (manual): paste the description in YouTube Studio · paste the article in the WP Code editor
+       │    ⏸ APPROVAL  YouTube description  (gates.youtube)
+       └─ hand-off (manual): paste the description in YouTube Studio
+
+  /yt-aeo:wp-article  (reads work/episode.json, instructions/wordpress-article.md)
+       adds key_takeaways · sections · faq · article.*  → article.wp.html · wp-post-fields.json · work/schema.jsonld
+       ⏸ APPROVAL  article (gates.wordpress) → paste in the WP Code editor, or optional draft push
+
+  /yt-aeo:fb-post     (reads work/episode.json, instructions/facebook-post.md)
+       adds facebook                                   → facebook-post.txt
+       ⏸ APPROVAL  post (gates.facebook)
+
+  later: further output commands (Instagram, newsletter …) – each = instruction file + skill + episode.json block + renderer
 ```
 
+**Episode folder:** the paste-ready outputs sit in the folder itself; `work/` holds everything the user need not read
+(episode.json, transcripts, schema, review sheet, push state).
+
 **Chat (skills-only) path:** where agents and local MCP tools don't load (plain chat), the user pastes the transcript and
-the `aeo-episode` skill runs the same steps and gates inline; outputs are produced as text to copy.
+the `episode` skill runs the same steps and gates inline; outputs are produced as text to copy.
 
 ### Instructions: general guidelines + user/brand instructions
 
 | Layer | Where | What |
 |---|---|---|
-| General (ships with the plugin) | `skills/aeo-episode/references/aeo-rules.md`, `episode-schema.md`, the `yt-description` / `wp-article` skills | AEO best practices: five pillars, citable sentences, chapter and title rules, article structure, attribution, freshness |
+| General (ships with the plugin) | `instructions/` – `aeo-rules.md`, `episode-schema.md` and one file per output (`youtube-description.md`, `wordpress-article.md`, `facebook-post.md`) | AEO best practices: five pillars, citable sentences, chapter and title rules, article structure, attribution, freshness |
 | Brand data | `~/.yt-aeo/brand.json` (merged over `config/brand.json`), `~/.yt-aeo/glossary.json` (added to `config/glossary.json`) | Channel, series, topics, site, organization, people, approved footer/promo block, disclaimer, names, ASR fixes, sponsor-read markers |
 | User/brand instructions | `~/.yt-aeo/guidelines.md` and/or `~/.yt-aeo/guidelines/*.md` (plain Markdown) | House style, tone, terminology, compliance rules, the brand's own AEO handbook; extend and override the general layer |
 | Code rules (cannot be overridden) | `scripts/aeo_lib.py` | YouTube limits, chapter rules, block markup, FAQ/schema parity, number traceability |
@@ -83,7 +95,7 @@ Not yet tested: agents + `yt-aeo-tools` MCP server in Desktop Cowork; live `fetc
   `(cd dev && npm run validate-blocks)`.
 - Claude Desktop: bump `version` in `.claude-plugin/plugin.json` → install the new version (GitHub marketplace once
   set up; until then `dev/package.sh` → Settings → Plugins: remove the old plugin, upload
-  `dist/yt-aeo-<version>.plugin`) → new Cowork task with a working folder → `/yt-aeo:aeo-episode`.
+  `dist/yt-aeo-<version>.plugin`) → new Cowork task with a working folder → `/yt-aeo:episode`.
 
 ### 3.2 Phase 1a – manual MVP (start here; ~1 week)
 

@@ -4,8 +4,9 @@ yt-aeo command line (same functions as the local MCP tools).
 
   python3 aeo.py transcript <youtube-url> <episode-dir> [--lang xx]   download subtitles (default: brand language)
   python3 aeo.py import <transcript-file> <episode-dir>                 parse a pasted/uploaded transcript
-  python3 aeo.py render <episode-dir> [--brand local-brand.json]       episode.json -> description, article, schema
-  python3 aeo.py validate <episode-dir> [--brand ...]                   checks + review.md
+  python3 aeo.py render <episode-dir> [--outputs youtube,wordpress,facebook] [--brand local-brand.json]
+                                                                        episode.json -> the requested outputs (default: all that have content)
+  python3 aeo.py validate <episode-dir> [--outputs ...] [--brand ...]   checks + work/review.md
   python3 aeo.py status                                                  is the one-time brand setup done?
   python3 aeo.py doctor                                                  check Python, folders, optional downloaders
   python3 aeo.py save-setup <answers.json>                               write ~/.yt-aeo/ files (keys: brand, glossary, guidelines_md, guidelines_off)
@@ -28,6 +29,7 @@ def main(argv=None):
     i = sub.add_parser("import"); i.add_argument("file"); i.add_argument("dir")
     for name in ("render", "validate"):
         s = sub.add_parser(name); s.add_argument("dir"); s.add_argument("--brand")
+        s.add_argument("--outputs", help="comma-separated: " + ",".join(L.OUTPUT_FILES))
     w = sub.add_parser("wp-draft"); w.add_argument("dir"); w.add_argument("--config"); w.add_argument("--brand")
     m = sub.add_parser("info"); m.add_argument("url")
     sub.add_parser("status")
@@ -56,11 +58,12 @@ def main(argv=None):
     else:
         brand = L.load_brand(Path(a.brand) if a.brand else None)
         d = Path(a.dir)
+        outputs = [o.strip() for o in a.outputs.split(",") if o.strip()] if getattr(a, "outputs", None) else None
         if a.cmd == "render":
-            out = L.render_package(d, brand)
+            out = L.render_package(d, brand, outputs)
         elif a.cmd == "validate":
-            out = L.validate_package(d, brand)
-            (d / "review.md").write_text(L.review_sheet(d, brand, out), encoding="utf-8")
+            out = L.validate_package(d, brand, outputs)
+            L.write_review(d, brand, out)
         else:
             out = N.wp_create_draft(d, brand, Path(a.config) if a.config else None)
     print(json.dumps(out, ensure_ascii=False, indent=2))

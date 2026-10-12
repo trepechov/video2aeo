@@ -1,5 +1,5 @@
 {
-  "_comment": "Generic defaults. Put the real brand in ~/.yt-aeo/brand.json (any subset of these keys; it is deep-merged over this file) – never commit it. The setup skill writes it. Values marked {{...}} must be filled (channel, topics) or are blanked when skipped (organization name/logo, schedule, disclaimer_url, social_links); the validator lists any that remain. Footer tokens: {SCHEDULE}, {DISCLAIMER_URL}, {SOCIAL_LINKS} are filled from description.* (a line whose value is empty is dropped); description.header (verbatim, optional) is always the first thing in the description; {PROMO} is where description.promo (links, messages, ads) goes when promo_position is 'end' – 'top' puts it above the answer.",
+  "_comment": "Generic defaults. Put the real brand in ~/.yt-aeo/brand.json (any subset of these keys; it is deep-merged over this file) – never commit it. The setup skill writes it. Values marked {{...}} must be filled (channel, topics) or are blanked when skipped (organization name/logo, schedule, disclaimer_url, social_links); the validator lists any that remain. Footer tokens: {SCHEDULE}, {DISCLAIMER_URL}, {SOCIAL_LINKS} are filled from description.* (a line whose value is empty is dropped); description.header (verbatim, optional) is always the first thing in the description; {PROMO} is where description.promo (links, messages, ads) goes when promo_position is 'end' – 'top' puts it above the answer. facebook.footer (optional, verbatim) is appended to the Facebook post; facebook.*_label are the link labels.",
   "language": "bg",
   "language_name": "Bulgarian",
   "channel": "{{CHANNEL_NAME}}",
@@ -50,5 +50,10 @@
     "eur_rate": 1.95583,
     "euro_since": "2026-01-01",
     "rule": "Sums in лева from before 2026 keep the original figure and add the euro equivalent in brackets, e.g. „94 млрд. лв. (≈ 48,1 млрд. €)“."
+  },
+  "facebook": {
+    "article_label": "📖 Пълният отговор:",
+    "watch_label": "▶ Гледайте епизода:",
+    "footer": ""
   }
 }
