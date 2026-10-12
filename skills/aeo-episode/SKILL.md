@@ -8,7 +8,7 @@ description: >
   description with chapters → WordPress Gutenberg article with the video embedded first → schema → checks,
   stopping at three human approval gates.
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
 ---
 
 # AEO Episode Agent – orchestrator

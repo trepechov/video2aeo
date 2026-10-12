@@ -128,6 +128,14 @@ def setup_status() -> dict:
         warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
     legacy_footer = "{PROMO}" not in d.get("footer", "") and "{{PROMO_BLOCK}}" not in d.get("footer", "")
     done = bool(info.get("completed"))
+    try:
+        gl = load_json(USER_DIR / "glossary.json") if (USER_DIR / "glossary.json").exists() else {}
+    except (OSError, ValueError):
+        gl = {}
+    glossary_entries = sum(len(gl.get(k) or []) for k in ("fixes", "names", "sponsor_read_markers"))
+    if not glossary_entries:
+        warnings.append("The brand glossary is empty – ask for brand, people and product names, common caption "
+                        "mistakes and sponsor-read markers (setup step 3).")
     return {
         "configured": done and not missing and not unreadable,
         "setup_completed": done,
@@ -137,6 +145,7 @@ def setup_status() -> dict:
         "unreadable": unreadable,
         "warnings": warnings,
         "legacy_footer": legacy_footer,
+        "glossary_entries": glossary_entries,
         "current": {
             "language": brand.get("language", "bg"),
             "language_name": brand.get("language_name", ""),
@@ -144,6 +153,7 @@ def setup_status() -> dict:
             "topics": brand.get("topics", ""),
             "site": brand.get("site", {}),
             "organization": brand.get("organization", {}),
+            "header": d.get("header", ""),
             "promo": d.get("promo", ""),
             "promo_position": d.get("promo_position", "end"),
             "schedule": d.get("schedule", ""),
@@ -494,6 +504,9 @@ def render_description(ep: dict, brand: dict) -> str:
     hours = (vid.get("duration_seconds") or 0) >= 3600
     out: list[str] = []
     top, footer = _promo_and_footer(brand["description"])
+    header = (brand["description"].get("header") or "").strip()
+    if header:  # the brand's fixed header – always first, verbatim
+        out += [header, DESC_SEP, ""]
     if top:
         out += [top, DESC_SEP, ""]
     out.append(plain(ep["answer_short"]).strip())
@@ -806,6 +819,11 @@ def validate_package(ep_dir: Path, brand: dict) -> dict:
             warnings.append(f"Description is {len(d)} chars – under {YT_DESCRIPTION_MARGIN} chars of margin.")
         body = d.strip()
         top, _ = _promo_and_footer(brand["description"])
+        header = (brand["description"].get("header") or "").strip()
+        if header and body.startswith(header):
+            if len(header) > 300 or header.count("\n") > 3:
+                warnings.append("The description header is long – the direct answer should start within ~3 lines.")
+            body = body[len(header):].lstrip().removeprefix(DESC_SEP).strip()
         if top and body.startswith(top):
             if len(top) > 300 or top.count("\n") > 3:
                 warnings.append("The promo block at the top is long – the direct answer should start within ~3 lines.")

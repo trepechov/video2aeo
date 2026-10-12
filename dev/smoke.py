@@ -113,4 +113,17 @@ brand["description"].update(promo="ADS", promo_position="end")
 L.render_package(ep_dir, brand)
 check("ADS" in (ep_dir / "youtube-description.txt").read_text(encoding="utf-8"), "promo at end (demo footer)")
 
+# --- fixed header: always first, before a top promo and the answer ---------------------------------
+brand["description"].update(header="📢 HEADER LINE", promo="TOPADS", promo_position="top")
+L.render_package(ep_dir, brand)
+text = (ep_dir / "youtube-description.txt").read_text(encoding="utf-8")
+check(text.startswith("📢 HEADER LINE") and text.index("TOPADS") < text.index(brand_answer := L.plain(
+    L.load_json(ep_dir / "episode.json")["answer_short"]).strip()[:40]), "header first, then promo, then answer")
+res = L.validate_package(ep_dir, brand)
+check(res["ok"] and not any("direct answer" in w for w in res["warnings"]), f"validate with header: {res}")
+
+# --- empty brand glossary is reported ---------------------------------------------------------------
+check(any("glossary" in w for w in L.setup_status()["warnings"]) or L.setup_status()["glossary_entries"] > 0,
+      "empty glossary must warn")
+
 print(f"smoke: {checks} checks ok")

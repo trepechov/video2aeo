@@ -6,7 +6,7 @@ description: >
   "rewrite the title the way people ask AI", "the description is over 5000 characters". It defines the fixed order,
   limits and writing rules; the text is stored in episode.json and rendered by the plugin.
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
 ---
 
 # AEO YouTube description
@@ -16,7 +16,8 @@ metadata:
 `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
-Write the description fields in `episode.json`; `render_package` assembles them in this fixed order:
+Write the description fields in `episode.json`; `render_package` assembles them in this fixed order. The brand's
+fixed **header** (`description.header`, if set) always comes first, verbatim – never write or reword it:
 
 1. `answer_short` – 2–3 sentences that directly answer the episode's main question. Reads like the first lines of an
    article. Must make sense without the video. Contains the key fact(s) with dates.
