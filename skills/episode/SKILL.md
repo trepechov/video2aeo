@@ -3,22 +3,22 @@ name: episode
 description: >
   This skill should be used when the user gives a YouTube URL of a new podcast/video episode and asks to "process the
   episode", "prepare the YouTube description", "make the AEO description with chapters", "download the subtitles and edit
-  the transcript", or runs /yt-aeo:episode <url>. It is the main command: subtitles → edited transcript → knowledge map
+  the transcript", or runs /video2aeo:episode <url>. It is the main command: subtitles → edited transcript → knowledge map
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article and
-  the Facebook post are separate follow-up commands (/yt-aeo:wp-article, /yt-aeo:fb-post).
+  the Facebook post are separate follow-up commands (/video2aeo:wp-article, /video2aeo:fb-post).
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
-# /yt-aeo:episode – transcript → knowledge map → YouTube description
+# /video2aeo:episode – transcript → knowledge map → YouTube description
 
 **STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
-`~/.yt-aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
+`~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
 `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 Turn one YouTube URL into an approved **YouTube description** and the shared knowledge map every other output is built
-from. Write every piece of text yourself; use the `yt-aeo-tools` tools (or
+from. Write every piece of text yourself; use the `video2aeo` tools (or
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/aeo.py`) only for fetching, rendering and checking.
 Principle: *a library of answers, not a calendar of videos* – every output must answer concrete questions in citable,
 self-contained sentences.
@@ -26,8 +26,8 @@ self-contained sentences.
 Read, once at the start and in this order:
 1. `${CLAUDE_PLUGIN_ROOT}/instructions/aeo-rules.md` – the general AEO principles.
 2. `${CLAUDE_PLUGIN_ROOT}/instructions/youtube-description.md` – how the description, chapters and title are built.
-3. The brand config: the plugin's `config/brand.json` merged with `~/.yt-aeo/brand.json`.
-4. User/brand instructions, if present: `~/.yt-aeo/guidelines.md` and every `~/.yt-aeo/guidelines/*.md`. They extend
+3. The brand config: the plugin's `config/brand.json` merged with `~/.video2aeo/brand.json`.
+4. User/brand instructions, if present: `~/.video2aeo/guidelines.md` and every `~/.video2aeo/guidelines/*.md`. They extend
    and override the general guidelines – but never the rules the code enforces (YouTube limits, chapter rules,
    number traceability).
 Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the content language
@@ -40,8 +40,8 @@ before writing `episode.json`.
 ```
 episodes/<yyyy-mm>-<series-short>-<nn>-<slug>/     e.g. episodes/2025-09-qw-08-naem-ili-pokupka
 ├── youtube-description.txt      ← paste-ready outputs, for the user (this command)
-├── article.wp.html, wp-post-fields.json           (/yt-aeo:wp-article)
-├── facebook-post.txt                              (/yt-aeo:fb-post)
+├── article.wp.html, wp-post-fields.json           (/video2aeo:wp-article)
+├── facebook-post.txt                              (/video2aeo:fb-post)
 └── work/                        ← working files the user does not need to read
     ├── episode.json  transcript.raw.json  transcript.raw.txt  transcript.edited.md
     └── schema.jsonld  review.md  wp-result.json
@@ -67,7 +67,7 @@ transcript") or attaches it. Import it with `import_transcript(file, episode_dir
 
 Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir)`. It tries
 youtube-transcript-api, then `yt-dlp` (install: `brew install yt-dlp`; optional browser cookies in
-`~/.yt-aeo/config.json`). If both fail, do not retry endlessly: tell the user in one short message that the transcript
+`~/.video2aeo/config.json`). If both fail, do not retry endlessly: tell the user in one short message that the transcript
 must be added by hand and offer the three ways from the returned `fallback` – YouTube Studio subtitles download, "Show
 transcript" copy, or an online YouTube-transcript service (paste the video address, copy/download the result) – then
 wait. A transcript pasted in the chat can be saved to a file first and imported the same way.
@@ -78,7 +78,7 @@ transcript and follow the same steps, producing the output by the template in `i
 ## Step 2 – Edited transcript
 
 Delegate to the `transcript-editor` agent (inline following that agent's rules if agents are unavailable).
-Input: `work/transcript.raw.txt` + `${CLAUDE_PLUGIN_ROOT}/config/glossary.json` + `~/.yt-aeo/glossary.json` (if it
+Input: `work/transcript.raw.txt` + `${CLAUDE_PLUGIN_ROOT}/config/glossary.json` + `~/.video2aeo/glossary.json` (if it
 exists). Output: `work/transcript.edited.md` – speaker-labelled paragraphs with `[MM:SS]` stamps, fillers removed, ASR
 errors fixed, sponsor reads wrapped in `<!-- sponsor -->…<!-- /sponsor -->`. Meaning must never change.
 
@@ -126,7 +126,7 @@ and forecasts are attributed. On approval set `gates.youtube`.
 
 - Tell the user to paste `youtube-description.txt` into YouTube Studio → Details → Description, set the chosen title,
   save, and check that chapters appear on the progress bar.
-- Next commands, same episode folder: `/yt-aeo:wp-article` (knowledge-base article), `/yt-aeo:fb-post` (Facebook post).
+- Next commands, same episode folder: `/video2aeo:wp-article` (knowledge-base article), `/video2aeo:fb-post` (Facebook post).
 
 Finish with one short message: what is ready, which approval is open, and the one next action.
 

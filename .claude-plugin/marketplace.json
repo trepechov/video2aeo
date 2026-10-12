@@ -1,18 +1,18 @@
 {
-  "name": "yt-aeo-helper",
+  "name": "video2aeo",
   "owner": {
     "name": "Dimitar",
     "url": "https://github.com/trepechov"
   },
   "metadata": {
-    "description": "YouTube AEO Episode Agent – transcript to AEO YouTube description and WordPress article."
+    "description": "Video2AEO – transcript to AEO YouTube description, WordPress article and Facebook post."
   },
   "plugins": [
     {
-      "name": "yt-aeo",
+      "name": "video2aeo",
       "source": "./",
-      "description": "Turns a podcast/video episode transcript into an AEO YouTube description with chapters and a WordPress Gutenberg article. Brand settings live in ~/.yt-aeo/.",
-      "version": "0.3.0",
+      "description": "Turns a podcast/video episode transcript into an AEO YouTube description with chapters, a WordPress Gutenberg article and a Facebook post. Brand settings live in ~/.video2aeo/.",
+      "version": "0.4.0",
       "category": "productivity"
     }
   ]

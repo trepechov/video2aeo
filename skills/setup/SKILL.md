@@ -1,19 +1,19 @@
 ---
 name: setup
 description: >
-  This skill should be used when the user asks to "set up the AEO plugin", "configure yt-aeo", "change the brand",
-  "change the promo block", "connect WordPress", "install the subtitle downloader", when any yt-aeo skill finds that the
+  This skill should be used when the user asks to "set up the AEO plugin", "configure video2aeo", "change the brand",
+  "change the promo block", "connect WordPress", "install the subtitle downloader", when any video2aeo skill finds that the
   one-time setup is not done (setup_status.configured is false), or when fetch_transcript / wp_push_draft report a
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # One-time setup for the AEO Episode Agent
 
 Audience: marketers, not developers. Plain language, one short question group at a time, no jargon, no terminal.
-When this skill was started automatically by another yt-aeo skill, finish the setup, then return to the user's
+When this skill was started automatically by another video2aeo skill, finish the setup, then return to the user's
 original request and continue it.
 
 ## 0. Check the computer
@@ -149,12 +149,12 @@ On approval call `save_setup` with:
 - `glossary` – the brand glossary from step 3 (omit only to keep what is saved);
 - `guidelines_md` and `guidelines_off` – omit either one to keep what is saved.
 
-The tool writes the user's `~/.yt-aeo/` folder (the previous `guidelines.md` is kept as `guidelines.md.bak`) and
+The tool writes the user's `~/.video2aeo/` folder (the previous `guidelines.md` is kept as `guidelines.md.bak`) and
 returns `ok` plus the new status. If `ok` is false, explain `errors` in plain words, fix the answer and save again.
 If `configured` is still false, ask for what `required_missing` / `missing` lists and save again.
 
 Finish with a short summary: channel, header and footer set, glossary entries, number of guidelines followed – and the next step
-(`/yt-aeo:episode` with the episode's YouTube address and transcript).
+(`/video2aeo:episode` with the episode's YouTube address and transcript).
 
 ## 6. Optional extras (skip by default)
 
@@ -166,8 +166,8 @@ Offer these only if the user asks, or after the first episode:
   `/usr/bin/python3 -m pip install --user youtube-transcript-api` (or `brew install yt-dlp`), then restart the
   Claude desktop app.
   - If YouTube answers „Sign in to confirm you're not a bot“ or blocks the address, add a logged-in browser to
-    `~/.yt-aeo/config.json`: `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
+    `~/.video2aeo/config.json`: `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
     an exported `cookies.txt`). Any YouTube account works, it need not be the channel's; a separate account is safer
     because automated use can get an account flagged. It is used only by `yt-dlp`. Never ask for cookies in chat.
-- **WordPress draft push** (Phase 1b) – an Application Password and a `~/.yt-aeo/config.json` file; do not collect the
+- **WordPress draft push** (Phase 1b) – an Application Password and a `~/.video2aeo/config.json` file; do not collect the
   password in chat. Until credentials exist the user pastes `article.wp.html` into the WordPress code editor.

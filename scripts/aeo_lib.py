@@ -1,5 +1,5 @@
 """
-yt-aeo core library (stdlib only).
+video2aeo core library (stdlib only).
 
 Deterministic parts of the pipeline – the LLM never does these:
   * transcript parsing (YouTube "MM:SS text" paste, VTT, SRT, JSON segments)
@@ -26,8 +26,17 @@ import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-# Per-user brand, glossary and credentials – never in the plugin. YT_AEO_HOME overrides it (used by the example checks).
-USER_DIR = Path(os.environ.get("YT_AEO_HOME") or Path.home() / ".yt-aeo").expanduser()
+# Per-user brand, glossary and credentials – never in the plugin. VIDEO2AEO_HOME overrides it (used by the example checks).
+# Legacy: before 0.4.0 the plugin was called yt-aeo – keep using its folder/variable if the new ones do not exist.
+def _user_dir() -> Path:
+    env = os.environ.get("VIDEO2AEO_HOME") or os.environ.get("YT_AEO_HOME")
+    if env:
+        return Path(env).expanduser()
+    new, old = Path.home() / ".video2aeo", Path.home() / ".yt-aeo"
+    return old if (old.is_dir() and not new.exists()) else new
+
+
+USER_DIR = _user_dir()
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 GENERIC_CHAPTERS = {
     "интро", "въведение", "начало", "разговор", "пазар", "съвети", "финал",
@@ -74,7 +83,7 @@ def load_episode(ep_dir: Path) -> dict:
 
 
 def load_brand(override: Path | None = None) -> dict:
-    """Generic plugin defaults, merged with ~/.yt-aeo/brand.json and then an explicit override file."""
+    """Generic plugin defaults, merged with ~/.video2aeo/brand.json and then an explicit override file."""
     brand = load_json(PLUGIN_ROOT / "config" / "brand.json")
     for path in (USER_DIR / "brand.json", override):
         if path and Path(path).exists():
@@ -101,7 +110,7 @@ def require_setup():
         return None
     return {"ok": False, "setup_required": True,
             "error": "Setup is not done on this computer yet. STOP: do not continue with the user's request. "
-                     "Run the `setup` skill (/yt-aeo:setup) first, then retry this step.",
+                     "Run the `setup` skill (/video2aeo:setup) first, then retry this step.",
             "missing": st["missing"], "unreadable": st["unreadable"], "user_dir": st["user_dir"]}
 
 
@@ -816,7 +825,7 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) 
         result["description_chars"] = len(text)
     if "wordpress" in outputs:
         if not (ep.get("sections") and ep.get("faq")):
-            skipped.append("wordpress (episode.json has no sections/faq yet – run /yt-aeo:wp-article)")
+            skipped.append("wordpress (episode.json has no sections/faq yet – run /video2aeo:wp-article)")
         else:
             tr_path = find_work_file(ep_dir, ep.get("transcript_file") or "transcript.edited.md")
             transcript_md = tr_path.read_text(encoding="utf-8") if tr_path.exists() else None
@@ -834,7 +843,7 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None) 
             result["transcript_included"] = transcript_md is not None
     if "facebook" in outputs:
         if not ep.get("facebook"):
-            skipped.append("facebook (episode.json has no facebook block yet – run /yt-aeo:fb-post)")
+            skipped.append("facebook (episode.json has no facebook block yet – run /video2aeo:fb-post)")
         else:
             (ep_dir / OUTPUT_FILES["facebook"]).write_text(render_facebook(ep, brand), encoding="utf-8")
             written.append(OUTPUT_FILES["facebook"])

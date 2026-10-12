@@ -1,5 +1,5 @@
 {
-  "name": "yt-aeo-dev",
+  "name": "video2aeo-dev",
   "private": true,
   "description": "Developer-only checks. Not used by the plugin at runtime.",
   "scripts": {

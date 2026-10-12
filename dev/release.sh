@@ -7,7 +7,7 @@ new="${1:?usage: dev/release.sh <new-version, e.g. 0.2.1>}"
 [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "'$new' is not a x.y.z version"; exit 1; }
 
 echo "== checks"
-export YT_AEO_HOME=examples/demo
+export VIDEO2AEO_HOME=examples/demo
 snapshot() { cat examples/demo/youtube-description.txt examples/demo/article.wp.html examples/demo/facebook-post.txt examples/demo/work/schema.jsonld | shasum; }
 before=$(snapshot)
 python3 scripts/aeo.py render examples/demo >/dev/null
@@ -47,6 +47,6 @@ claude plugin validate .
 cat <<EOF
 
 Version is now $new. Next:
-  git add -A && git commit -m "yt-aeo $new" && git push
-Then in the Claude desktop app: Settings → Plugins → yt-aeo → Update.
+  git add -A && git commit -m "video2aeo $new" && git push
+Then in the Claude desktop app: Settings → Plugins → video2aeo → Update.
 EOF

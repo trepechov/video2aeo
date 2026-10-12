@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Smoke checks for the setup flow and the description footer/promo rendering (dev-only, not shipped).
-Runs against a temporary YT_AEO_HOME, so it never touches ~/.yt-aeo/. Python 3.9+, stdlib only.
+Runs against a temporary VIDEO2AEO_HOME, so it never touches ~/.video2aeo/. Python 3.9+, stdlib only.
 
   python3 dev/smoke.py          # prints "smoke: N checks ok" or the first failure
 """
@@ -13,8 +13,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TMP = Path(tempfile.mkdtemp(prefix="yt-aeo-smoke-"))
-os.environ["YT_AEO_HOME"] = str(TMP / "home")
+TMP = Path(tempfile.mkdtemp(prefix="video2aeo-smoke-"))
+os.environ["VIDEO2AEO_HOME"] = str(TMP / "home")
 sys.path.insert(0, str(ROOT / "scripts"))
 import aeo_lib as L  # noqa: E402
 

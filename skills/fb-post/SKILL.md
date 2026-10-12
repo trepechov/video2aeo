@@ -1,17 +1,17 @@
 ---
 name: fb-post
 description: >
-  This skill should be used when the user runs /yt-aeo:fb-post or asks for a Facebook post for an episode that
-  /yt-aeo:episode has already processed – e.g. "write the Facebook post", "make a social teaser for the episode". It adds
+  This skill should be used when the user runs /video2aeo:fb-post or asks for a Facebook post for an episode that
+  /video2aeo:episode has already processed – e.g. "write the Facebook post", "make a social teaser for the episode". It adds
   the facebook block to the episode's work/episode.json and renders facebook-post.txt, then stops for approval.
 metadata:
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
-# /yt-aeo:fb-post – Facebook post for an episode
+# /video2aeo:fb-post – Facebook post for an episode
 
 **STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
-`~/.yt-aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
+`~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
 `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
@@ -21,12 +21,12 @@ facts – it condenses the approved knowledge map.
 ## Inputs
 
 - The episode folder (the user names it, or take the newest under `episodes/`) with `work/episode.json`. If it is
-  missing, stop and tell the user to run `/yt-aeo:episode` first.
+  missing, stop and tell the user to run `/video2aeo:episode` first.
 - If `gates.A` is empty, say so and ask whether to continue anyway.
 
 Read, in this order: `${CLAUDE_PLUGIN_ROOT}/instructions/aeo-rules.md`,
 `${CLAUDE_PLUGIN_ROOT}/instructions/facebook-post.md`, the brand config and the user/brand instructions
-(`~/.yt-aeo/guidelines.md`, `~/.yt-aeo/guidelines/*.md`, notably `facebook-post.md`).
+(`~/.video2aeo/guidelines.md`, `~/.video2aeo/guidelines/*.md`, notably `facebook-post.md`).
 
 ## Steps
 

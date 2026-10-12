@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-yt-aeo command line (same functions as the local MCP tools).
+video2aeo command line (same functions as the local MCP tools).
 
   python3 aeo.py transcript <youtube-url> <episode-dir> [--lang xx]   download subtitles (default: brand language)
   python3 aeo.py import <transcript-file> <episode-dir>                 parse a pasted/uploaded transcript
@@ -9,8 +9,8 @@ yt-aeo command line (same functions as the local MCP tools).
   python3 aeo.py validate <episode-dir> [--outputs ...] [--brand ...]   checks + work/review.md
   python3 aeo.py status                                                  is the one-time brand setup done?
   python3 aeo.py doctor                                                  check Python, folders, optional downloaders
-  python3 aeo.py save-setup <answers.json>                               write ~/.yt-aeo/ files (keys: brand, glossary, guidelines_md, guidelines_off)
-  python3 aeo.py wp-draft <episode-dir> [--config ~/.yt-aeo/config.json]  push article as WordPress DRAFT
+  python3 aeo.py save-setup <answers.json>                               write ~/.video2aeo/ files (keys: brand, glossary, guidelines_md, guidelines_off)
+  python3 aeo.py wp-draft <episode-dir> [--config ~/.video2aeo/config.json]  push article as WordPress DRAFT
 """
 import argparse
 import json

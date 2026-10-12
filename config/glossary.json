@@ -1,5 +1,5 @@
 {
-  "_comment": "Generic Bulgarian ASR fixes and canonical spellings. Brand-specific names, terms and sponsor-read markers go in ~/.yt-aeo/glossary.json (same keys; entries are added to these). Keys in `fixes` are wrong forms seen in YouTube auto-captions; values are correct forms. Extend after every episode (Gate A).",
+  "_comment": "Generic Bulgarian ASR fixes and canonical spellings. Brand-specific names, terms and sponsor-read markers go in ~/.video2aeo/glossary.json (same keys; entries are added to these). Keys in `fixes` are wrong forms seen in YouTube auto-captions; values are correct forms. Extend after every episode (Gate A).",
   "fixes": {
     "недвижини": "недвижими",
     "наимодатели": "наемодатели",

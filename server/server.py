@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-yt-aeo-tools – a tiny local MCP server (stdio, JSON-RPC, stdlib only).
+video2aeo – a tiny local MCP server (stdio, JSON-RPC, stdlib only).
 
 Exposes the deterministic and network steps of the pipeline as tools so the agent
 can call them from a Cowork task on the marketer's computer. All writing is done
@@ -16,24 +16,24 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
 
-SERVER = {"name": "yt-aeo-tools", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
+SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
 OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wordpress", "facebook"]},
            "description": "Which outputs to handle. Omit for every output that already has content in episode.json. "
-                          "/yt-aeo:episode passes [\"youtube\"], /yt-aeo:wp-article [\"wordpress\"], /yt-aeo:fb-post [\"facebook\"]."}
+                          "/video2aeo:episode passes [\"youtube\"], /video2aeo:wp-article [\"wordpress\"], /video2aeo:fb-post [\"facebook\"]."}
 DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-10-dk-08-danatsi"}
 TOOLS = [
     {"name": "setup_status",
      "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
                     "placeholders, unreadable files, warnings, legacy_footer and the current saved values (to pre-fill setup). "
-                    "Call it first in every yt-aeo workflow; if configured is false run the setup skill.",
+                    "Call it first in every video2aeo workflow; if configured is false run the setup skill.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "check_environment",
-     "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.yt-aeo/ can be "
+     "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.video2aeo/ can be "
                     "written, and whether the optional subtitle downloaders are installed. Used by the setup skill.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "save_setup",
-     "description": "Write the user-approved setup answers to ~/.yt-aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
+     "description": "Write the user-approved setup answers to ~/.video2aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
                     "brand/glossary are merged over existing files; omitted arguments keep what is saved; skipped optional fields "
                     "are saved empty; the previous guidelines.md is kept as guidelines.md.bak. Only call after the user approved "
                     "the summary. Returns ok/errors plus the new status.",
@@ -67,8 +67,8 @@ TOOLS = [
                     "requested outputs. Writes work/review.md.",
      "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "outputs": OUTPUTS}, "required": ["episode_dir"]}},
     {"name": "wp_push_draft",
-     "description": "Create or update the article in WordPress as a DRAFT (never publishes). Requires Gate B signed and "
-                    "~/.yt-aeo/config.json. Only call when the user explicitly asks to push the draft.",
+     "description": "Create or update the article in WordPress as a DRAFT (never publishes). Requires the article approval (gates.wordpress) and "
+                    "~/.video2aeo/config.json. Only call when the user explicitly asks to push the draft.",
      "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}, "required": ["episode_dir"]}},
 ]
 

@@ -2,7 +2,7 @@
 
 The setup shows this list in plain language. **Locked** rules are enforced by the plugin's code and cannot be
 switched off. **Adjustable** rules are the general AEO guidelines; the user may switch each one off. Switched-off ids
-go to `guidelines_off` and a "Switched-off guidelines" section in `~/.yt-aeo/guidelines.md`, which every skill and
+go to `guidelines_off` and a "Switched-off guidelines" section in `~/.video2aeo/guidelines.md`, which every skill and
 agent reads after the general guidelines.
 
 ## Locked (checked by the plugin)

@@ -1,7 +1,7 @@
 # AEO rules (condensed from the brand's AEO handbook)
 
 Adjustable rules carry an id in brackets, e.g. `[answer-first]` (list: `skills/setup/references/guideline-catalog.md`).
-A rule whose id is listed under "Switched-off guidelines" in `~/.yt-aeo/guidelines.md` is not applied. Rules without
+A rule whose id is listed under "Switched-off guidelines" in `~/.video2aeo/guidelines.md` is not applied. Rules without
 an id are enforced by the plugin's code and cannot be switched off.
 
 AI systems do not watch video. They extract and cite **text connected to it**: title, description, transcript,

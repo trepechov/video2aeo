@@ -1,5 +1,5 @@
 """
-Network side of yt-aeo (stdlib only). Runs on the marketer's own computer:
+Network side of video2aeo (stdlib only). Runs on the marketer's own computer:
 YouTube blocks caption requests from cloud IPs, so these calls must stay local.
 
   video_info(url)                       – title, channel, thumbnail, upload date, duration
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import aeo_lib as L
 
-UA = {"User-Agent": "Mozilla/5.0 (yt-aeo plugin)", "Accept-Language": "bg,en;q=0.8"}
+UA = {"User-Agent": "Mozilla/5.0 (video2aeo plugin)", "Accept-Language": "bg,en;q=0.8"}
 
 
 def _get(url: str, headers: dict | None = None, timeout: int = 20) -> bytes:
@@ -62,7 +62,7 @@ def video_info(url: str) -> dict:
 # ----------------------------------------------------------------------------
 
 def _yt_cookie_args() -> list:
-    """Optional yt-dlp cookie options from ~/.yt-aeo/config.json: {"youtube": {"cookies_from_browser": "chrome"}} or
+    """Optional yt-dlp cookie options from ~/.video2aeo/config.json: {"youtube": {"cookies_from_browser": "chrome"}} or
     {"youtube": {"cookies_file": "/path/cookies.txt"}}. Any logged-in YouTube account works – it only gets past the
     bot / IP checks; nothing is posted with it. Never put cookies in chat or in the repo."""
     try:
@@ -127,7 +127,7 @@ def _load_wp_config(path: Path | None) -> dict:
     for c in candidates:
         if c and Path(c).exists():
             return json.loads(Path(c).read_text(encoding="utf-8")).get("wordpress", {})
-    env = {k: os.environ.get(f"YT_AEO_WP_{k.upper()}") for k in ("base_url", "username", "app_password")}
+    env = {k: os.environ.get(f"VIDEO2AEO_WP_{k.upper()}") for k in ("base_url", "username", "app_password")}
     return env if all(env.values()) else {}
 
 
@@ -163,7 +163,7 @@ def _term_ids(cfg: dict, taxonomy: str, names: list[str], create: bool) -> tuple
 def wp_create_draft(ep_dir: Path, brand: dict, cfg_path: Path | None = None) -> dict:
     cfg = _load_wp_config(cfg_path)
     if not cfg:
-        return {"ok": False, "error": "No WordPress credentials. Create ~/.yt-aeo/config.json with "
+        return {"ok": False, "error": "No WordPress credentials. Create ~/.video2aeo/config.json with "
                                       "{\"wordpress\": {\"base_url\", \"username\", \"app_password\"}} (see setup skill)."}
     check = L.validate_package(ep_dir, brand, ["wordpress"])
     if not check["ok"]:
@@ -172,7 +172,7 @@ def wp_create_draft(ep_dir: Path, brand: dict, cfg_path: Path | None = None) -> 
     gates = ep.get("gates") or {}
     if not (gates.get("wordpress") or gates.get("B")):
         return {"ok": False, "error": "The article is not approved: sign it in episode.json → gates.wordpress "
-                                      "(done by /yt-aeo:wp-article after the editor's approval)."}
+                                      "(done by /video2aeo:wp-article after the editor's approval)."}
     art = ep["article"]
     cat_ids, missing_cats = _term_ids(cfg, "categories", [art["category"]] if art.get("category") else [], create=False)
     tag_ids, _ = _term_ids(cfg, "tags", art.get("tags", []), create=True)

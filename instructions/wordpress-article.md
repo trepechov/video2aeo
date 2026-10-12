@@ -1,7 +1,7 @@
 # WordPress article – structure and rules
 
 Output: `article.wp.html` (Gutenberg block markup, paste into the code editor) and `wp-post-fields.json` (title, slug,
-SEO fields, category, tags). Written by `/yt-aeo:wp-article`, from `work/episode.json` and the edited transcript.
+SEO fields, category, tags). Written by `/video2aeo:wp-article`, from `work/episode.json` and the edited transcript.
 
 The article title is **the same as the final YouTube title** (`video.title`). It lives in the knowledge-base category
 (`site.kb_name`). It serves two readers at once: a person who skims (answer first, short paragraphs, headings, tables)
@@ -70,5 +70,5 @@ and understand the episode? Is every table understandable without the text aroun
 ## Extending
 
 Add further rules here (image/alt-text policy, featured image, author box variants, category rules …). Brand-specific
-additions belong in `~/.yt-aeo/guidelines/wordpress-article.md`. The exact block markup is documented in
+additions belong in `~/.video2aeo/guidelines/wordpress-article.md`. The exact block markup is documented in
 `skills/wp-article/references/gutenberg-blocks.md`.

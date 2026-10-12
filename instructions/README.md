@@ -7,12 +7,12 @@ These files are the plugin's general instructions for each thing it produces. Th
 
 | Output (file in the episode folder) | Command | Instruction file |
 |---|---|---|
-| `youtube-description.txt` (+ title, chapters) | `/yt-aeo:episode` | `youtube-description.md` |
-| `article.wp.html`, `wp-post-fields.json` | `/yt-aeo:wp-article` | `wordpress-article.md` |
-| `facebook-post.txt` | `/yt-aeo:fb-post` | `facebook-post.md` |
+| `youtube-description.txt` (+ title, chapters) | `/video2aeo:episode` | `youtube-description.md` |
+| `article.wp.html`, `wp-post-fields.json` | `/video2aeo:wp-article` | `wordpress-article.md` |
+| `facebook-post.txt` | `/video2aeo:fb-post` | `facebook-post.md` |
 
 3. The brand's own instructions on the user's computer, which extend or override the general ones – but never the rules
-   the code enforces: `~/.yt-aeo/guidelines.md`, then every `~/.yt-aeo/guidelines/*.md`. A file in that folder named
+   the code enforces: `~/.video2aeo/guidelines.md`, then every `~/.video2aeo/guidelines/*.md`. A file in that folder named
    like an instruction file here (`wordpress-article.md`, `facebook-post.md`, `youtube-description.md`) is read for that
    output.
 

@@ -1,6 +1,6 @@
 # YouTube description – structure and rules
 
-Output: `youtube-description.txt` (paste into YouTube Studio → Details → Description). Written by `/yt-aeo:episode`.
+Output: `youtube-description.txt` (paste into YouTube Studio → Details → Description). Written by `/video2aeo:episode`.
 The text lives in `work/episode.json`; `render_package` assembles it in the fixed order below – never hand-edit the file.
 
 ## Goal
@@ -62,6 +62,6 @@ The chosen title is both the YouTube title and the WordPress article title.
 ## Extending
 
 Add further rules here (hashtag policy, pinned-comment text, end-screen wording …). Brand-specific additions belong
-in `~/.yt-aeo/guidelines/youtube-description.md`.
+in `~/.video2aeo/guidelines/youtube-description.md`.
 
 See `skills/episode/references/example-youtube-description.txt` for a complete rendered example (fictional demo brand).

@@ -11,9 +11,9 @@ files (this file, `transcript.raw.*`, `transcript.edited.md`, `schema.jsonld`, `
 
 | Command | Fields |
 |---|---|
-| `/yt-aeo:episode` | everything up to `hashtags`: `video`, `series`, `people`, `answer_short`, `context`, `questions`, `chapters`, `claims`, `freshness_note`, `hashtags`, `article.slug` (+ `article.category`), `gates.A`, `gates.youtube` |
-| `/yt-aeo:wp-article` | `key_takeaways`, `sections`, `faq`, `article.*` (SEO fields, tags, related), `gates.wordpress` |
-| `/yt-aeo:fb-post` | `facebook`, `gates.facebook` |
+| `/video2aeo:episode` | everything up to `hashtags`: `video`, `series`, `people`, `answer_short`, `context`, `questions`, `chapters`, `claims`, `freshness_note`, `hashtags`, `article.slug` (+ `article.category`), `gates.A`, `gates.youtube` |
+| `/video2aeo:wp-article` | `key_takeaways`, `sections`, `faq`, `article.*` (SEO fields, tags, related), `gates.wordpress` |
+| `/video2aeo:fb-post` | `facebook`, `gates.facebook` |
 
 Text fields accept light markdown: `**bold**`, `*italic*`, `[text](https://url)`. No raw HTML.
 Times (`t`) are **seconds** (integers). Unknown values: use `{{UPPER_SNAKE}}` placeholders – the validator lists them.
@@ -85,7 +85,7 @@ Times (`t`) are **seconds** (integers). Unknown values: use `{{UPPER_SNAKE}}` pl
 }
 ```
 
-Gates: `A` = facts, names, numbers, chapters and title approved (`/yt-aeo:episode`); `youtube`, `wordpress`,
+Gates: `A` = facts, names, numbers, chapters and title approved (`/video2aeo:episode`); `youtube`, `wordpress`,
 `facebook` = that output's copy (and, for the article, SEO fields and compliance) approved by its own command. A WordPress
 draft push needs `gates.wordpress`. Each value is `"<name or 'user'> <ISO date>"`.
 

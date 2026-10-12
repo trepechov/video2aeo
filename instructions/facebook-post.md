@@ -1,6 +1,6 @@
 # Facebook post – structure and rules
 
-Output: `facebook-post.txt` (paste into a Facebook page post). Written by `/yt-aeo:fb-post` from `work/episode.json`;
+Output: `facebook-post.txt` (paste into a Facebook page post). Written by `/video2aeo:fb-post` from `work/episode.json`;
 the knowledge comes from the episode's already approved answer, questions and claims – the post adds nothing new.
 
 ## Goal
@@ -32,4 +32,4 @@ that is useful on its own, not a copy of the description.
 ## Extending
 
 Add further rules here (posting time, image or video-clip choice, comment-reply policy, group variants …).
-Brand-specific additions belong in `~/.yt-aeo/guidelines/facebook-post.md`.
+Brand-specific additions belong in `~/.video2aeo/guidelines/facebook-post.md`.
