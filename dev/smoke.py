@@ -66,6 +66,43 @@ saved = L.load_json(L.USER_DIR / "brand.json")
 check(saved["description"]["promo"] == "PROMO TEXT" and "description.promo" not in saved, "dotted key not expanded")
 check(saved["organization"]["logo"] == "" and saved["description"]["schedule"] == "", "optional fields not blanked")
 
+# --- episode format: validated, saved, drives the coverage plan -----------------------------------
+check(L.save_setup(brand={"format": {"speakers": "choir"}})["ok"] is False, "bad format.speakers rejected")
+check(L.save_setup(brand={"format": {"coverage": {"full_until_minutes": 90, "selective_from_minutes": 60}}})["ok"] is False,
+      "inverted coverage thresholds rejected")
+r = L.save_setup(brand={"format": {"speakers": "host_and_guests", "opening_teaser": "always",
+                                   "coverage": {"full_until_minutes": 20, "max_questions_selective": 8}}})
+check(r["ok"] and r["current"]["format"]["opening_teaser"] == "always", f"format not saved: {r.get('errors')}")
+fmt = r["current"]["format"]
+check(fmt["coverage"]["selective_from_minutes"] == 75, "default coverage keys must survive a partial save")
+check(L.coverage_plan(15 * 60, fmt)["tier"] == "full", "15 min must be full")
+check(L.coverage_plan(40 * 60, fmt)["tier"] == "balanced", "40 min must be balanced")
+sel = L.coverage_plan(120 * 60, fmt)
+check(sel["tier"] == "selective" and sel["questions"][1] == 8, f"120 min must be selective, max 8: {sel}")
+check(L.coverage_plan(0, fmt)["tier"] == "unknown", "unknown length handled")
+tb = L.transcript_blocks("# T\n\n<!-- teaser -->\n**[00:01] A:** hook\n<!-- /teaser -->\n\n**[01:00] A:** body\n\n"
+                         "<!-- boilerplate -->\n**[59:00] A:** bye\n<!-- /boilerplate -->\n")
+check(len(tb) == 1 and "body" in tb[0] and "hook" not in tb[0] and "bye" not in tb[0], "teaser/boilerplate must be dropped")
+
+# --- several formats per brand: profiles override the base ---------------------------------------
+check(L.save_setup(brand={"formats": {"clips": {"speakers": "solo"}}})["ok"] is False, "profile without label rejected")
+check(L.save_setup(brand={"formats": {"clips": {"label": "Clips", "opening_teaser": "x"}}})["ok"] is False,
+      "bad enum in profile rejected")
+r = L.save_setup(brand={"formats": {"clips": {"label": "Clips", "speakers": "solo", "coverage": {"full_until_minutes": 15}}}})
+check(r["ok"] and "clips" in r["current"]["formats"], f"profile not saved: {r.get('errors')}")
+b = L.load_brand()
+rf = L.resolve_format(b, "clips")
+check(rf["speakers"] == "solo" and rf["opening_teaser"] == "always" and rf["coverage"]["full_until_minutes"] == 15
+      and rf["coverage"]["selective_from_minutes"] == 75, f"profile must override only its fields: {rf}")
+check(L.resolve_format(b, "nope") == b["format"] and L.resolve_format(b) == b["format"], "unknown profile -> base")
+check(L.coverage_plan(18 * 60, rf)["tier"] == "balanced" and L.coverage_plan(18 * 60, b["format"])["tier"] == "full",
+      "18 min: balanced for clips (full until 15), full for the base format (until 20)")
+
+check(L.save_setup(brand={"format": {"links": ["javascript:alert(1)"]}})["ok"] is False, "non-http link rejected")
+r = L.save_setup(brand={"format": {"notes": "Audience: founders.", "links": ["https://example.org/about"]}})
+check(r["ok"] and r["current"]["format"]["links"] == ["https://example.org/about"]
+      and r["current"]["format"]["notes"] == "Audience: founders.", f"notes/links not saved: {r.get('errors')}")
+
 # --- partial re-run keeps earlier answers; guidelines.md is backed up ------------------------------
 r = L.save_setup(brand={"channel": "Demo 2"})
 check(r["guidelines_off"] == ["euro-equivalents"], "guidelines_off must survive a save without it")

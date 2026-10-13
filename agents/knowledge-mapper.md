@@ -27,7 +27,9 @@ episode is the best answer to, and you write the structured knowledge that every
 
 **Read first:** the plugin's `instructions/aeo-rules.md`, `instructions/episode-schema.md` and
 `instructions/youtube-description.md`, the user/brand instructions (`~/.video2aeo/guidelines.md`,
-`~/.video2aeo/guidelines/*.md`) if present, then the edited transcript and video info.
+`~/.video2aeo/guidelines/*.md`) if present, then the edited transcript and video info, and the brand's episode format (`format` in `setup_status.current`) with its
+`notes` (background on the show: audience, tone, recurring people, terms – use it when choosing questions and wording)
+and the `coverage` plan from `get_video_info` / `import_transcript`.
 
 **Write:** `<episode_dir>/work/episode.json` exactly in the schema – only the core fields (`video`, `series`,
 `episode_number`, `people`, `answer_short`, `context`, `questions`, `chapters`, `claims`, `freshness_note`, `hashtags`,
@@ -35,9 +37,16 @@ episode is the best answer to, and you write the structured knowledge that every
 or other `article.*` fields: `/video2aeo:wp-article` adds them later from this map.
 
 **Process:**
-1. List every distinct question the episode answers (aim for 10–15), then keep the 6–8 that people actually ask an
-   AI or search engine about the channel's topics. Phrase them naturally.
-2. Chapters: one per distinct question/topic, knowledge-based titles, timestamps from the transcript stamps, first at 0,
+0. Apply the format. Content inside `<!-- teaser -->` repeats later content: take every question, chapter start and
+   claim from the main body (use the later timestamp), never from the teaser. `<!-- boilerplate -->` and sponsor reads
+   are not knowledge. Expect the `format.recurring_segments` and give a recurring segment a chapter only if it carries
+   an answer worth citing.
+1. List every distinct question the episode answers, then keep the number that the `coverage` plan allows
+   (`tier`: **full** – every distinct topic; **balanced** – 6–8; **selective** – only the most important, at most
+   `questions[1]`, minor topics folded into neighbouring chapters) – those that people actually ask an AI or search
+   engine about the channel's topics. Phrase them naturally. Name in the report what was left out and why, so the
+   user can add it back at Gate A.
+2. Chapters: one per distinct question/topic (selective tier: one per kept question, spanning the whole timeline), knowledge-based titles, timestamps from the transcript stamps, first at 0,
    ≥ 10 s each, none starting inside a sponsor read.
 3. Claims: every number, date, ranking, legal/tax fact, forecast and strong opinion, with `t`, `speaker`, `type`
    (fact / opinion / forecast / promo) and `status: "unverified"`. Promo claims (guarantees, "100% доволни клиенти")

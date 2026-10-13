@@ -102,6 +102,65 @@ OPTIONAL_FIELDS = (("organization", "name"), ("organization", "logo"), ("descrip
 ADJUSTABLE_GUIDELINES = ("answer-first", "question-titles", "knowledge-chapters", "question-index", "freshness-note",
                          "euro-equivalents", "skip-sponsor-reads", "question-sections", "faq-and-authors")
 PROMO_POSITIONS = ("end", "top")
+# Episode format (setup step 4): allowed values of the enumerated brand.format fields.
+FORMAT_ENUMS = {"speakers": ("solo", "host_and_guest", "host_and_guests", "panel", "varies"),
+                "opening_teaser": ("none", "sometimes", "always")}
+
+
+def resolve_format(brand: dict, profile: str | None = None) -> dict:
+    """The episode format to use: the brand's base `format`, overridden by the named profile in `formats`
+    (a channel may have several shows/formats). Unknown or empty profile -> the base format."""
+    base = brand.get("format") or {}
+    prof = (brand.get("formats") or {}).get(profile or "")
+    return _deep_merge(base, prof) if isinstance(prof, dict) else dict(base)
+
+
+def _format_errors(fmt, where: str) -> list:
+    errors = []
+    if not isinstance(fmt, dict):
+        return [f"{where} must be an object."]
+    for key, allowed in FORMAT_ENUMS.items():
+        if key in fmt and fmt[key] not in allowed:
+            errors.append(f"{where}.{key} must be one of {allowed}.")
+    for key in ("recurring_segments", "intro_outro", "notes"):
+        if key in fmt and not isinstance(fmt[key], str):
+            errors.append(f"{where}.{key} must be text.")
+    links = fmt.get("links", [])
+    if not isinstance(links, list) or any(not isinstance(u, str) or not re.match(r"https?://\S+$", u) for u in links):
+        errors.append(f"{where}.links must be a list of http(s) addresses.")
+    cov = fmt.get("coverage") or {}
+    if not isinstance(cov, dict):
+        return errors + [f"{where}.coverage must be an object."]
+    nums = [cov[k] for k in ("full_until_minutes", "selective_from_minutes", "max_questions_selective") if k in cov]
+    nums += [fmt["teaser_max_minutes"]] if "teaser_max_minutes" in fmt else []
+    if any(isinstance(n, bool) or not isinstance(n, (int, float)) or n <= 0 for n in nums):
+        errors.append(f"{where}.coverage values and teaser_max_minutes must be positive numbers.")
+    elif {"full_until_minutes", "selective_from_minutes"} <= set(cov) and \
+            cov["full_until_minutes"] >= cov["selective_from_minutes"]:
+        errors.append(f"{where}.coverage.full_until_minutes must be smaller than selective_from_minutes.")
+    return errors
+
+
+def coverage_plan(duration_seconds: float, fmt: dict | None = None) -> dict:
+    """How much of an episode the knowledge map should cover, by its length. Short episodes are covered fully, long
+    ones selectively (only the most important questions, minor stretches folded into neighbouring chapters)."""
+    fmt = fmt or {}
+    cov = {**{"full_until_minutes": 30, "selective_from_minutes": 75, "max_questions_selective": 10},
+           **(fmt.get("coverage") or {})}
+    minutes = round((duration_seconds or 0) / 60, 1)
+    if minutes <= 0:
+        return {"tier": "unknown", "minutes": 0, "rule": "Length unknown – use the balanced rule (6–8 questions)."}
+    if minutes <= cov["full_until_minutes"]:
+        return {"tier": "full", "minutes": minutes, "questions": [4, 10],
+                "rule": "Short episode: cover every distinct topic – a question and a chapter for each; nothing is dropped."}
+    if minutes < cov["selective_from_minutes"]:
+        return {"tier": "balanced", "minutes": minutes, "questions": [6, 8],
+                "rule": "Medium episode: 6–8 questions people actually ask; every topic of 2+ minutes gets a chapter."}
+    top = int(cov["max_questions_selective"])
+    return {"tier": "selective", "minutes": minutes, "questions": [6, top],
+            "rule": f"Long episode: keep only the most important questions (at most {top}), ranked by how likely people ask "
+                    "an AI or search about them. Minor topics get no question of their own – fold them into the nearest "
+                    "chapter. Chapters still span the whole timeline (about one per 5–10 minutes)."}
 
 
 def require_setup():
@@ -204,6 +263,8 @@ def setup_status() -> dict:
             "disclaimer_url": d.get("disclaimer_url", ""),
             "social_links": d.get("social_links", ""),
             "footer": d.get("footer", ""),
+            "format": brand.get("format", {}),
+            "formats": brand.get("formats", {}),
             "guidelines_md": guidelines_md,
         },
         "guidelines_off": info.get("guidelines_off", []),
@@ -276,6 +337,18 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
     pos = _get(brand or {}, ("description", "promo_position"))
     if pos is not None and pos not in PROMO_POSITIONS:
         errors.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
+
+    if _get(brand or {}, ("format",)) is not None:
+        errors += _format_errors(brand["format"], "format")
+    profiles = _get(brand or {}, ("formats",))
+    if profiles is not None:
+        if not isinstance(profiles, dict):
+            errors.append("formats must be an object: profile id -> format.")
+        else:
+            for pid, prof in profiles.items():
+                errors += _format_errors(prof, f"formats.{pid}")
+                if isinstance(prof, dict) and not str(prof.get("label", "")).strip():
+                    errors.append(f"formats.{pid}.label (a plain name the user recognises) is required.")
 
     if errors:
         return {"ok": False, "errors": errors, **setup_status()}
@@ -675,8 +748,9 @@ def b_html(raw: str) -> str:
 
 def transcript_blocks(md_text: str) -> list[str]:
     """transcript.edited.md -> paragraph blocks. Lines starting with '#' are skipped,
-    sponsor reads marked with <!-- sponsor --> ... <!-- /sponsor --> are dropped."""
-    md_text = re.sub(r"<!--\s*sponsor\s*-->.*?<!--\s*/sponsor\s*-->", "", md_text, flags=re.S)
+    sponsor reads, the opening teaser (repeats the body) and standard welcome/farewell wording, marked with
+    <!-- sponsor|teaser|boilerplate --> ... <!-- /... -->, are dropped."""
+    md_text = re.sub(r"<!--\s*(sponsor|teaser|boilerplate)\s*-->.*?<!--\s*/\1\s*-->", "", md_text, flags=re.S)
     blocks = []
     for para in re.split(r"\n\s*\n", md_text):
         para = " ".join(l.strip() for l in para.strip().splitlines())

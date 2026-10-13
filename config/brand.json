@@ -17,6 +17,17 @@
     "same_as": []
   },
   "people": {},
+  "format": {
+    "speakers": "host_and_guest",
+    "opening_teaser": "none",
+    "teaser_max_minutes": 3,
+    "recurring_segments": "",
+    "intro_outro": "",
+    "notes": "",
+    "links": [],
+    "coverage": {"full_until_minutes": 30, "selective_from_minutes": 75, "max_questions_selective": 10}
+  },
+  "formats": {},
   "description": {
     "questions_heading": "Основни въпроси, на които ще получите отговор:",
     "article_label": "📖 Статия, FAQ и пълен транскрипт:",

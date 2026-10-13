@@ -45,8 +45,9 @@ TOOLS = [
          "guidelines_off": {"type": "array", "items": {"type": "string"},
                             "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"}}}},
     {"name": "get_video_info",
-     "description": "Get title, channel, thumbnail, upload date, duration and the current description of a YouTube video.",
-     "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
+     "description": "Get title, channel, thumbnail, upload date, duration and the current description of a YouTube video, plus the "
+                    "`coverage` plan (full / balanced / selective) for the knowledge map derived from the duration and the episode's format profile.",
+     "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "format": {"type": "string", "description": "Id of the brand's format profile (setup_status.current.formats) of this episode; omit for the base format"}}, "required": ["url"]}},
     {"name": "fetch_transcript",
      "description": "Download the video's subtitles (in the brand language by default) from YouTube to work/transcript.raw.json/.txt in the episode folder. "
                     "Runs on this computer. On failure returns the manual fallback.",
@@ -55,7 +56,7 @@ TOOLS = [
                      "required": ["url", "episode_dir"]}},
     {"name": "import_transcript",
      "description": "Parse a transcript file the user downloaded or pasted (VTT, SRT, YouTube 'MM:SS text' copy, JSON) into work/transcript.raw.*",
-     "inputSchema": {"type": "object", "properties": {"file": {"type": "string"}, "episode_dir": DIR},
+     "inputSchema": {"type": "object", "properties": {"file": {"type": "string"}, "episode_dir": DIR, "format": {"type": "string", "description": "Id of the brand's format profile (setup_status.current.formats) of this episode; omit for the base format"}},
                      "required": ["file", "episode_dir"]}},
     {"name": "render_package",
      "description": "Render work/episode.json into the requested outputs: youtube-description.txt, article.wp.html (Gutenberg) "
@@ -93,12 +94,18 @@ def call(name, args):
         if blocked:
             return blocked
     if name == "get_video_info":
-        return N.video_info(args["url"])
+        info = N.video_info(args["url"])
+        if isinstance(info, dict) and info.get("duration_seconds"):
+            info["coverage"] = L.coverage_plan(info["duration_seconds"], L.resolve_format(_brand(), args.get("format")))
+        return info
     if name == "fetch_transcript":
         return N.fetch_transcript(args["url"], Path(args["episode_dir"]), args.get("lang") or _brand().get("language", "bg"))
     if name == "import_transcript":
         segs = L.parse_transcript_text(Path(args["file"]).read_text(encoding="utf-8"))
-        return L.write_raw_transcript(segs, Path(args["episode_dir"]), f"import:{Path(args['file']).name}")
+        res = L.write_raw_transcript(segs, Path(args["episode_dir"]), f"import:{Path(args['file']).name}")
+        if segs:  # last stamp = lower bound of the length; the video's duration (get_video_info) is preferred
+            res["coverage"] = L.coverage_plan(segs[-1]["start"], L.resolve_format(_brand(), args.get("format")))
+        return res
     d = Path(args["episode_dir"])
     outputs = args.get("outputs") or None
     if name == "render_package":

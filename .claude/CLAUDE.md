@@ -68,7 +68,9 @@ The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python
 
 ## Status (12 Oct 2026)
 v0.1 moved from a cloud session to the local Mac and made brand-neutral (plugin named `yt-aeo`). 0.4.0 renamed it to **Video2AEO** (`video2aeo`, settings `~/.video2aeo/`); the code still reads
-the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing.
+the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing. 0.5.0 added episode formats: `brand.format` +
+`brand.formats.<id>` profiles asked one question at a time in setup, a length-based coverage plan (`coverage_plan`), and
+teaser/boilerplate markers in the edited transcript.
 Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
 Desktop Cowork, live `fetch_transcript`, `wp_push_draft`.
 

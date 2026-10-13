@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
@@ -31,8 +31,10 @@ Read, once at the start and in this order:
    and override the general guidelines – but never the rules the code enforces (YouTube limits, chapter rules,
    number traceability).
 Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the content language
-(`language_name` from `setup_status.current`) and the switched-off guideline ids (`setup_status.guidelines_off`) –
-those general guidelines are not applied anywhere in the episode. Read `${CLAUDE_PLUGIN_ROOT}/instructions/episode-schema.md`
+(`language_name` from `setup_status.current`), the switched-off guideline ids (`setup_status.guidelines_off`) –
+those general guidelines are not applied anywhere in the episode – and the episode's format (the base `setup_status.current.format` with the chosen profile from `current.formats` merged
+over it: speakers, opening teaser, recurring segments, intro/outro wording, the free-text `notes` about the show and its `links`) plus the `coverage` plan of this episode.
+The notes are the user's own background on the show: agents take them into account (audience, tone, terms, people). Read `${CLAUDE_PLUGIN_ROOT}/instructions/episode-schema.md`
 before writing `episode.json`.
 
 ## Episode folder
@@ -53,10 +55,15 @@ of starting over (ask which step to redo only when the user did not say).
 
 1. Preflight (STOP rule above): `setup_status` must report `configured: true`.
 2. Create a task list with the steps below so the marketer sees progress.
-3. `get_video_info(url)`. Keep `title`, `upload_date`, `duration_seconds`, `thumbnail_url`, `current_description`
+3. **Choose the format.** If `current.formats` is empty, the base format applies. Otherwise pick the profile whose
+   `series` matches the episode's series or title; if none matches clearly, ask the user once with AskUserQuestion
+   (the profiles' labels, plus „основен формат“). Remember the id as `format` in `episode.json` so a resumed run
+   does not ask again, and pass it as `format` to `get_video_info` / `import_transcript`.
+4. `get_video_info(url, format)`. Keep the `coverage` plan (full / balanced / selective, from the real duration and the brand's episode format) – it
+   decides how many questions and chapters the map keeps. Keep `title`, `upload_date`, `duration_seconds`, `thumbnail_url`, `current_description`
    (the old description – reuse its approved footer/promo wording, never invent promo text). If the page request is
    rate-limited, continue with what came back and mark the missing fields as placeholders.
-4. Create the episode folder and its `work/` subfolder.
+5. Create the episode folder and its `work/` subfolder.
 
 ## Step 1 – Transcript
 
@@ -95,7 +102,8 @@ Stop and present to the user, compactly:
   and every later output's title;
 - the questions list and chapter list;
 - claims needing a decision: numbers, forecasts, dated facts, anything flagged in `freshness`;
-- any name/term you were unsure about.
+- any name/term you were unsure about;
+- for a selective-tier episode: the topics that were left out, so the user can add some back.
 
 Use AskUserQuestion for the title choice. Apply corrections to `episode.json`, set `gates.A` to
 `"<name or 'user'> <ISO date>"`. If the user is not present (unattended run), pick option 1, mark every open item in

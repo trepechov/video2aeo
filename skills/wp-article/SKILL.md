@@ -7,7 +7,7 @@ description: >
   episode's work/episode.json, renders article.wp.html and wp-post-fields.json, and stops at an approval step; an
   optional draft push to WordPress follows only on request.
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
 ---
 
 # /video2aeo:wp-article – knowledge-base article for an episode

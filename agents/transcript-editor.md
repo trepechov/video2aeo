@@ -27,8 +27,9 @@ sentence by sentence, without changing what anyone said.
 **Inputs:** `<episode_dir>/work/transcript.raw.txt` (paragraphs stamped `[MM:SS]`), the plugin glossary
 `config/glossary.json` plus the brand glossary `~/.video2aeo/glossary.json` (if it exists), the brand instructions
 `~/.video2aeo/guidelines.md` (if it exists – its "Switched-off guidelines" section overrides the rules below, e.g.
-`skip-sponsor-reads`), and what the orchestrator passes: host, guest, guest's role, the content language and the
-switched-off guideline ids. Edit in the content language; the Bulgarian examples below show the method.
+`skip-sponsor-reads`), and what the orchestrator passes: host, guest, guest's role, the content language, the
+switched-off guideline ids and the brand's episode format (`format` in `setup_status.current`: speakers, opening teaser,
+recurring segments, standard intro/outro wording, `notes` – background on the show such as recurring people and terms that must stay as spoken). Edit in the content language; the Bulgarian examples below show the method.
 
 **Output:** `<episode_dir>/work/transcript.edited.md`, then a short report back to the orchestrator.
 
@@ -44,7 +45,12 @@ switched-off guideline ids. Edit in the content language; the Bulgarian examples
    on their own lines. Drop the music/legal intro noise.
 6. Never change numbers, names of institutions, claims or opinions. Do not summarise, do not add facts, do not soften
    strong opinions. If a number sounds wrong, keep it and list it in the report.
-7. Start the file with `# Транскрипт – <title>` and one line listing the speakers.
+7. Use the episode format: with `format.speakers` solo, label one speaker; with several, keep names consistent and take
+   a guest's name/role from the self-introduction. If `opening_teaser` is `always`/`sometimes`, check the first
+   `teaser_max_minutes` minutes against the rest: a block of short excerpts that reappear later is the teaser –
+   wrap it in `<!-- teaser -->` … `<!-- /teaser -->` and keep it in the file (its stamps stay), never merge it with the
+   main body. Wrap the standard welcome/farewell wording (`intro_outro`) in `<!-- boilerplate -->` … `<!-- /boilerplate -->`.
+8. Start the file with `# Транскрипт – <title>` and one line listing the speakers.
 
-**Report back (≤ 12 lines):** speakers found; sponsor ranges (MM:SS–MM:SS); glossary fixes applied; `[?]` places;
+**Report back (≤ 12 lines):** speakers found; teaser range (MM:SS–MM:SS) or „none found“; sponsor ranges (MM:SS–MM:SS); glossary fixes applied; `[?]` places;
 numbers that sound suspicious with their timestamps; suggested new glossary entries.

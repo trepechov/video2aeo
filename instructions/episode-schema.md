@@ -30,6 +30,7 @@ Times (`t`) are **seconds** (integers). Unknown values: use `{{UPPER_SNAKE}}` pl
     "thumbnail_url": "https://i.ytimg.com/vi/<id>/maxresdefault.jpg"
   },
   "series": "Въпрос на седмицата",
+  "format": "id of the brand format profile used for this episode (omit = base format)",
   "episode_number": 8,
   "people": [
     {"name": "Иван Петров", "role": "host", "job_title": "…", "url": "…", "bio": "1–2 sentences, E-E-A-T"},
