@@ -21,19 +21,33 @@ import json
 import os
 import platform
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # Per-user brand, glossary and credentials – never in the plugin. VIDEO2AEO_HOME overrides it (used by the example checks).
-# Legacy: before 0.4.0 the plugin was called yt-aeo – keep using its folder/variable if the new ones do not exist.
+# Legacy: before 0.4.0 the plugin was called yt-aeo. Its settings folder is copied to the new one once (the old folder
+# is left untouched as a backup) and the new folder is used from then on; YT_AEO_HOME is still honoured.
+MIGRATED_FROM = ""
+
+
 def _user_dir() -> Path:
+    global MIGRATED_FROM
     env = os.environ.get("VIDEO2AEO_HOME") or os.environ.get("YT_AEO_HOME")
     if env:
         return Path(env).expanduser()
     new, old = Path.home() / ".video2aeo", Path.home() / ".yt-aeo"
-    return old if (old.is_dir() and not new.exists()) else new
+    if old.is_dir() and not new.exists():
+        try:
+            shutil.copytree(old, new)  # copy2 keeps file modes, so credentials stay private
+            os.chmod(new, 0o700)
+            MIGRATED_FROM = str(old)
+        except OSError:
+            shutil.rmtree(new, ignore_errors=True)  # we created it; never leave a half copy that would win next time
+            return old
+    return new
 
 
 USER_DIR = _user_dir()
@@ -243,6 +257,7 @@ def setup_status() -> dict:
         "configured": done and not missing and not unreadable,
         "setup_completed": done,
         "user_dir": str(USER_DIR),
+        "migrated_from": MIGRATED_FROM,
         "missing": missing,
         "required_missing": required_missing,
         "unreadable": unreadable,

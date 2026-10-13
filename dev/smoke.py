@@ -48,6 +48,22 @@ env = L.check_environment()
 check(env["ok"] and env["python"]["ok"], f"check_environment not ok: {env['problems']}")
 check(not L.USER_DIR.exists(), "check_environment must not create the settings folder")
 
+# --- legacy ~/.yt-aeo is copied once to ~/.video2aeo (HOME points at a temp dir, no env override) --------
+import subprocess
+fake_home = TMP / "legacy-home"
+(fake_home / ".yt-aeo").mkdir(parents=True)
+(fake_home / ".yt-aeo" / "brand.json").write_text('{"channel": "Old"}', encoding="utf-8")
+probe = ("import sys; sys.path.insert(0, %r); import aeo_lib as L; "
+         "print(L.USER_DIR, L.MIGRATED_FROM, sep='|')" % str(ROOT / "scripts"))
+env = {k: v for k, v in os.environ.items() if k not in ("VIDEO2AEO_HOME", "YT_AEO_HOME")}
+env["HOME"] = str(fake_home)
+out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True).stdout.strip()
+check(out == f"{fake_home / '.video2aeo'}|{fake_home / '.yt-aeo'}", f"legacy folder must be migrated: {out}")
+check((fake_home / ".video2aeo" / "brand.json").read_text(encoding="utf-8") == '{"channel": "Old"}'
+      and (fake_home / ".yt-aeo" / "brand.json").exists(), "migration must copy and keep the old folder")
+out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True).stdout.strip()
+check(out == f"{fake_home / '.video2aeo'}|", f"second run must not migrate again: {out}")
+
 # --- first run: not configured, nothing written ---------------------------------------------------
 st = L.setup_status()
 check(not st["configured"] and not st["setup_completed"], "fresh folder must not be configured")

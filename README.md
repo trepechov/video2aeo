@@ -137,7 +137,8 @@ That is all – then `/video2aeo:episode` with the episode address or transcript
 When a new version is published (the `version` in the repository changes), open Settings → Plugins, refresh the
 marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Cowork task afterwards.
 Your brand settings in `~/.video2aeo/` are not touched. Settings of the former name (`yt-aeo`) in `~/.yt-aeo/` are
-still read if `~/.video2aeo/` does not exist.
+copied to `~/.video2aeo/` the first time the new plugin runs; the old folder is left in place as a backup and can be
+deleted once everything works.
 
 ## Usage
 

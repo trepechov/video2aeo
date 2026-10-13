@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -59,6 +59,8 @@ Then call `setup_status` and use it like this:
   `setup_completed`: treat them the same way (confirm, do not start from scratch).
 - **`configured` is true** – say what is set (language, channel, formats, promo position, guidelines switched off)
   and ask which step to change; run only that step.
+- **`migrated_from` is set** – the settings of the former plugin name were copied from that folder to `user_dir`.
+  Tell the user in one sentence that the old folder is left as a backup and can be deleted when everything works.
 - **`unreadable` is not empty** – a settings file is damaged. Tell the user in one sentence that it will be repaired:
   saving again keeps the damaged copy as `<name>.broken` and writes a fresh file from the answers.
 - **`warnings`** – mention each one when you reach the related question.

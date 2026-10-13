@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description

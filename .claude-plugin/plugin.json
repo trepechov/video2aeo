@@ -1,7 +1,7 @@
 {
   "name": "video2aeo",
   "displayName": "Video2AEO",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Turns a new YouTube podcast episode into an AEO package: downloaded subtitles, edited transcript, AEO YouTube description with chapters, a WordPress (Gutenberg) article with the video embedded first, FAQ and schema. Semi-automated: a human approves the facts and every output. Brand settings live in ~/.video2aeo/.",
   "author": {
     "name": "Dimitar"
