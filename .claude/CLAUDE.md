@@ -21,15 +21,15 @@ Content language is **Bulgarian**; code, comments and docs are English.
 
 ## Layout
 - `.claude-plugin/plugin.json` – manifest (plugin name `video2aeo`; commands are `/video2aeo:<skill>`).
-- `skills/` – `episode` (`/video2aeo:episode`: transcript → knowledge map → YouTube description), `wp-article`, `setup`. Each output command renders only its own file (`outputs` arg of `render_package`/`validate_package`).
+- `skills/` – `episode` (`/video2aeo:episode`: transcript → knowledge map → YouTube description), `resume` (continue after a crash, from `episode_status`), `wp-article`, `setup`. Each output command renders only its own file (`outputs` arg of `render_package`/`validate_package`).
 - `agents/` – `transcript-editor`, `knowledge-mapper`, `aeo-reviewer`. Frontmatter `description` must be a YAML block scalar (`|`).
 - `.mcp.json` + `server/server.py` – local stdio MCP server `video2aeo` (stdlib-only Python).
 - `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
-  `VIDEO2AEO_HOME`). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
+  `VIDEO2AEO_HOME`). `scripts/aeo_pipeline.py` – transcript chunks, merge, `progress.json`, `episode_status` (state is derived from files). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
 - Episode folders: one `episodes_root` (setup → `~/.video2aeo/config.json`) → `<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/`;
   paths are built by `episode_path`, the session folder is checked by `workspace_status`, and the output tools refuse
   other locations (`aeo_lib`: `classify_workspace`, `check_episode_dir`; override `allow_outside_root`).
-- `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.video2aeo/` files.
+- `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.video2aeo/` files. `config/models.json` – default model per delegated operation; the user may override via `models` in `~/.video2aeo/config.json` (default = plugin table, setup never asks).
 - `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`
   (setup flow and footer/promo rendering against a temp `VIDEO2AEO_HOME`). Not shipped.
 - Setup: every user-facing skill preflights with the `setup_status` tool; the `setup` skill interviews the user and

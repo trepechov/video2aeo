@@ -130,6 +130,10 @@ Not built or not yet hardened – each item is new work:
 4. `validate_package` allowlists HTML (block markup, https links, no script/iframe except the YouTube embed).
 5. Then test `wp_push_draft` (draft) against the real site, and install on one marketer's laptop.
 
+Done in 0.7.0 (plan: `docs/plans/2026-10-22-002-feat-resume-and-watchdog-plan.md`): chunked transcript editing, `episode_status`,
+`/video2aeo:resume`, model per operation (`config/models.json`). Next from that plan: Stop/SessionStart hooks, then the external
+watchdog (`scripts/watchdog.py`) once real crash data exists.
+
 ## 4. Phase 2 – WordPress plugin „Video2AEO for WordPress“ (3–5 weeks)
 
 Start only after `episode.json` is frozen. Reuse the same prompts (copied from this plugin's skills/agents) and port

@@ -1,12 +1,12 @@
 ---
-title: "feat: Checkpointed pipeline, /video2aeo:resume and watchdog"
+title: "feat: Checkpointed pipeline, resume, watchdog and per-task models"
 type: feat
-status: draft
+status: active  # 0.7.0: units 1-3, 6, 7 (chunking, episode_status, resume, models) shipped; hooks and watchdog open
 date: 2026-10-22
 target_version: 0.7.0
 ---
 
-# feat: Checkpointed pipeline, /video2aeo:resume and watchdog
+# feat: Checkpointed pipeline, resume, watchdog and per-task models
 
 ## Summary
 
@@ -36,6 +36,8 @@ continues from disk state), **watchdog** (something outside the model that notic
 - R6. A `SessionStart` hook mentions an unfinished episode and suggests `/video2aeo:resume` (no auto-run).
 - R7. `scripts/watchdog.py` (stdlib, Python 3.9, cross-platform) runs the pipeline headless, kills it after a stall
   timeout, and relaunches `resume` up to N times with back-off. Stops at a human gate and reports it.
+- R9. Every delegated operation runs on the cheapest model that is good enough for it, whatever model the user has
+  pre-selected. Mapping lives in config, not in prose; the plugin's default table applies out of the box; the user may optionally switch profile (`fast` / `balanced` / `quality`) or pin single operations.
 - R8. All of it works unattended and attended; nothing publishes (principle 3).
 
 ## Design
@@ -96,10 +98,56 @@ failing 3 times → stop and write `work/watchdog.log` with the diagnosis (small
 the next attempt runs with `minutes=5`). Needs `claude` on PATH; desktop app users get the Stop hook + manual
 `/video2aeo:resume` only (state this in the docs).
 
+### 6. Model per operation
+
+Problem: all three agents have `model: inherit`, so a user who has the most powerful (and slowest) model selected pays
+for it on mechanical chunk editing too. The setup skill currently says the plugin cannot switch models – true for the
+**session** model, but not for **delegated** work: the Agent tool accepts a `model` per call, and agent frontmatter has a default.
+
+| Operation | Nature | `fast` | `balanced` (default) | `quality` |
+|---|---|---|---|---|
+| `transcript_edit` (per chunk) | mechanical, long output, Bulgarian | haiku | sonnet | sonnet |
+| `knowledge_map_sections` (per section) | extraction | sonnet | sonnet | opus |
+| `knowledge_map_merge` (titles, questions, chapters) | judgement, small input | sonnet | opus | opus |
+| `description_copy` (answer, context, FAQ text) | writing quality matters | inherit | inherit | inherit |
+| `aeo_review` | checklist read-through | haiku | sonnet | sonnet |
+
+(Initial guess – validated by the benchmark below, then frozen. Values are aliases `haiku|sonnet|opus|fable|inherit`, so they
+follow new model releases without a plugin update. Full model ids are not accepted: the Agent tool takes aliases only. The article
+is written by the session model, so there is no separate article operation.)
+
+- **Default = plugin defaults.** With no user config, the `balanced` table in `config/models.json` applies. Setup does
+  **not** ask about models; a fresh install just works. Nothing the user must decide.
+- **Optional override**, two levels, both stored in `~/.video2aeo/config.json` under `models`:
+  - `{"profile": "fast" | "balanced" | "quality"}` – switch the whole table;
+  - `{"overrides": {"transcript_edit": "haiku", ...}}` – pin single operations (alias; `inherit` = use
+    the session model).
+  Precedence: per-operation override > profile > plugin default. Absent keys fall through, so a partial override
+  never breaks the rest.
+- **How the user sets it:** on request only – `/video2aeo:setup` offers "change models" when the user asks for it
+  (profiles in plain words with rough time impact, then optional per-operation pins); or edit `config.json` by hand.
+  `setup_status.models` returns the resolved table plus `source` per operation (`default|profile|override`) so the
+  skill can show what is in effect.
+- **Validation:** code merges and validates (unknown operation, profile or alias → error naming the key; the bad entry is ignored and
+  the default used, so a typo never stops an episode). Overrides never touch code-enforced rules.
+- **Use:** skills pass `model=setup_status.models.operations.<operation>.model` on every Agent call; agent frontmatter defaults become
+  `sonnet` (works even when a skill forgets). `inherit` is kept only for the writing step done in the main session.
+- **Session model warning:** `episode_status` returns `session_model_hint` (read from the agent's own context by the
+  skill). If the session is on the heaviest tier and the profile is `fast`/`balanced`, the skill says once: "the session
+  model is only used for the final copy – you can switch to <lighter> with /model to save time". It never blocks.
+- **Watchdog:** passes `--model` from the same table for the headless run (session model = `description_copy`).
+- **Reasoning effort:** where the harness exposes it per agent/skill, mechanical operations use low effort; recorded in
+  the same table (`effort`), ignored silently when unsupported.
+- **Fallback on failure:** if a delegated call fails or `merge_transcript`/schema validation rejects the output twice,
+  retry once one tier up (`haiku→sonnet→opus`), log it in `progress.json`. Code decides, not the model.
+- **Benchmark before freezing the table:** run `transcript_edit` and `knowledge_map_*` on 2–3 back-catalogue episodes
+  with each alias; compare wall time, token cost and Bulgarian quality (names, numbers unchanged – `validate_package`
+  number traceability is an objective check). Keep the cheapest passing choice per operation.
+
 ## Implementation units
 
 1. `aeo_lib`: chunk split/merge, `episode_status`, `progress.json` helpers; CLI `split`, `merge`, `status`; MCP tools.
-2. Agents: `transcript-editor` chunk mode (context card in, summary out); `knowledge-mapper` section mode.
+2. `config/models.json`, merge in `setup_status`, `models` in setup/`save_setup`; agent frontmatter defaults; model fallback in `progress.json`. Agents: `transcript-editor` chunk mode (context card in, summary out); `knowledge-mapper` section mode.
 3. Skills: `episode` Step 2/3 chunk loop and `episode_status` at Step 0; new `resume` skill.
 4. Hooks + `hooks/hooks.json` (check `claude plugin validate .` accepts it; no top-level `bin/`).
 5. `scripts/watchdog.py` + `dev/` test with a fake `claude` executable that hangs/crashes on cue.
@@ -116,9 +164,10 @@ the next attempt runs with `minutes=5`). Needs `claude` on PATH; desktop app use
 - Is the crash a Claude Code bug, memory/context exhaustion or an API timeout? Chunking fixes the last two; ask the user
   to attach `claude` logs next time it crashes so the watchdog's stall rule can be tuned.
 - The Stop hook may fight an interactive user who wants to stop: it only blocks inside a pipeline step, never at gates.
+- Model aliases map to whatever the user's plan offers; if an alias is unavailable the call fails → fallback tier or `inherit`.
 - Cowork/Desktop cannot run the external watchdog; only R1–R6 apply there.
 
 ## Suggested order
 
-Ship R1–R4 first (0.7.0: chunking, `episode_status`, `/video2aeo:resume` – most of the value), then hooks (R5–R6),
+Ship R1–R4 and R9 first (0.7.0: chunking, `episode_status`, `/video2aeo:resume`, model table – most of the value), then hooks (R5–R6),
 then the watchdog (R7) as 0.7.x because it needs real crash data to tune.

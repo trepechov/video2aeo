@@ -308,6 +308,134 @@ cfgp.write_text('{"wordpress": {}}', encoding="utf-8")
 check(N._yt_cookie_args() == [], "no youtube config -> no cookie args")
 cfgp.unlink()
 
+# --- long episodes: chunked editing survives a crash, state comes from the files -----------------------
+import aeo_pipeline as P  # noqa: E402
+
+
+def raw_para(sec, n=40):
+    return f"[{L.fmt_ts(sec)}] " + " ".join(f"дума{sec}x{i}" for i in range(n))
+
+
+def fake_edit(ep, n, header=False, sponsor_first=False, sponsor_last=False):
+    cd = ep / "work" / "chunks"
+    paras = [t for _, t in P._paragraphs((cd / f"{n:02d}.raw.txt").read_text(encoding="utf-8"))]
+    out = ["# Транскрипт – Тест\n\nВодещ: Иван\n"] if header else []
+    for i, t in enumerate(paras):
+        m = re.match(r"\[([\d:]+)\] (.*)", t, re.S)
+        line = f"**[{m.group(1)}] Иван:** {m.group(2)}"
+        if (sponsor_first and i == 0) or (sponsor_last and i == len(paras) - 1):
+            line = f"<!-- sponsor -->\n{line}\n<!-- /sponsor -->"
+        out.append(line)
+    (cd / f"{n:02d}.edited.md").write_text("\n\n".join(out) + "\n", encoding="utf-8")
+
+
+long_ep = TMP / "long"
+(long_ep / "work").mkdir(parents=True)
+raw_path = long_ep / "work" / "transcript.raw.txt"
+raw_path.write_text("\n\n".join(raw_para(s) for s in range(0, 40 * 60, 30)) + "\n", encoding="utf-8")
+st = P.episode_status(long_ep)
+check(st["step"] == "edit_transcript" and "split_transcript" in st["next_action"], f"not split yet: {st['step']} {st['next_action']}")
+sp = P.split_transcript(long_ep)
+check(sp["ok"] and sp["total"] == 4 and sp["todo"] == [1, 2, 3, 4], f"40 min -> 4 chunks of 10 min: {sp}")
+check((long_ep / "work/chunks/02.context.txt").exists() and not (long_ep / "work/chunks/01.context.txt").exists(), "context files")
+check(P.split_transcript(long_ep)["reused"] is True, "same transcript must reuse the split")
+fake_edit(long_ep, 1, header=True, sponsor_last=True)
+fake_edit(long_ep, 2, sponsor_first=True)
+st = P.episode_status(long_ep)
+check(st["chunks"]["done"] == 2 and "3-4" in st["next_action"], f"two chunks done: {st['next_action']}")
+# crash while writing chunk 3: a truncated file must not count as done
+f3 = long_ep / "work/chunks/03.edited.md"
+fake_edit(long_ep, 3)
+f3.write_text(f3.read_text(encoding="utf-8")[:1500], encoding="utf-8")
+st = P.episode_status(long_ep)
+check(st["chunks"]["invalid"] and st["chunks"]["invalid"][0]["n"] == 3 and "3-4" in st["next_action"], f"truncated chunk: {st}")
+mg = P.merge_transcript(long_ep)
+check(not mg["ok"] and mg["invalid"][0]["n"] == 3 and mg["todo"] == [4], f"merge must refuse: {mg}")
+fake_edit(long_ep, 3)
+fake_edit(long_ep, 4)
+check(P.episode_status(long_ep)["next_action"] == "merge_transcript", "all chunks done -> merge")
+mg = P.merge_transcript(long_ep)
+check(mg["ok"], f"merge: {mg}")
+merged = (long_ep / "work/transcript.edited.md").read_text(encoding="utf-8")
+check(merged.count("# Транскрипт") == 1 and merged.count("<!-- sponsor -->") == 1 and merged.count("<!-- /sponsor -->") == 1,
+      "title once; a sponsor block across a chunk border becomes one block")
+check(P.episode_status(long_ep)["step"] == "knowledge_map", "after merge the next step is the knowledge map")
+# the episode was extended: re-split keeps the edited chunks whose text did not change
+raw_path.write_text(raw_path.read_text(encoding="utf-8") + "\n" + raw_para(40 * 60) + "\n\n" + raw_para(40 * 60 + 400) + "\n", encoding="utf-8")
+st = P.episode_status(long_ep)
+check(st["stale"] and "split_transcript" in st["next_action"], f"stale after the raw transcript changed: {st}")
+check(not P.merge_transcript(long_ep)["ok"], "merge must refuse a stale split")
+sp = P.split_transcript(long_ep)
+check(sp["kept_edited"] == [1, 2, 3, 4] and sp["todo"] == [5], f"re-split keeps finished chunks: {sp}")
+short = TMP / "short"
+(short / "work").mkdir(parents=True)
+(short / "work" / "transcript.raw.txt").write_text("\n\n".join(raw_para(s) for s in range(0, 600, 30)) + "\n", encoding="utf-8")
+check(P.split_transcript(short)["total"] == 1, "a 10 minute episode is one chunk")
+# legacy / single-call episodes (edited transcript without chunks) still count as edited
+legacy = fixture.build(TMP / "pipeline-legacy")
+st = P.episode_status(legacy)
+check("edit_transcript" in st["done"] and st["step"] != "transcript", f"legacy episode: {st['step']} {st['done']}")
+
+# --- progress, deferred gates -------------------------------------------------------------------------
+P.record_progress(long_ep, "chunk-04", error="timeout")
+P.record_progress(long_ep, "chunk-04", error="timeout")
+check(P.load_progress(long_ep)["steps"]["chunk-04"]["attempts"] == 2, "attempts are counted")
+gate_ep = fixture.build(TMP / "pipeline-gate")
+ep = L.load_json(gate_ep / "work/episode.json")
+ep["gates"] = {"A": "", "youtube": "", "wordpress": ""}
+(gate_ep / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
+st = P.episode_status(gate_ep)
+check(st["step"] == "gate_A" and st["pending_gate"] == "A", f"stops at Gate A: {st['step']}")
+P.record_progress(gate_ep, "gate_A", defer_gate="A")
+st = P.episode_status(gate_ep)
+check(st["step"] != "gate_A" and st["open_gates"] == ["A"], f"unattended run continues, the gate stays open: {st['step']}")
+ep["gates"]["A"] = "user 2026-10-22"
+(gate_ep / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
+check(P.episode_status(gate_ep)["open_gates"] == [], "an approved gate is no longer open")
+L.render_package(gate_ep, L.load_brand(gate_ep / "brand.json"), ["youtube"])
+res = L.validate_package(gate_ep, L.load_brand(gate_ep / "brand.json"), ["youtube"])
+L.write_review(gate_ep, L.load_brand(gate_ep / "brand.json"), res)
+st = P.episode_status(gate_ep)
+check(st["step"] == "gate_youtube" and st["pending_gate"] == "youtube", f"rendered -> waits for approval: {st['step']}")
+ep["gates"]["youtube"] = "user 2026-10-22"
+(gate_ep / "work/episode.json").write_text(json.dumps(ep, ensure_ascii=False), encoding="utf-8")
+check(P.episode_status(gate_ep)["step"] == "done", "all gates approved -> done")
+
+# --- latest unfinished episode under the episodes root -------------------------------------------------
+root = TMP / "pipeline-root"
+(root / "_other").mkdir(parents=True)
+os.replace(long_ep, root / "_other" / "2026-10-other-01-long")
+os.replace(gate_ep, root / "_other" / "2026-10-other-02-done")
+L.USER_DIR.mkdir(parents=True, exist_ok=True)
+cfg_file = L.USER_DIR / "config.json"
+cfg_before = cfg_file.read_text(encoding="utf-8") if cfg_file.exists() else None
+cfg_file.write_text(json.dumps({"episodes_root": str(root)}), encoding="utf-8")
+found = P.find_unfinished()
+check(found and found["episode_dir"].endswith("2026-10-other-01-long"), f"find_unfinished skips the done episode: {found}")
+if cfg_before is None:
+    cfg_file.unlink()
+else:
+    cfg_file.write_text(cfg_before, encoding="utf-8")
+
+# --- models: plugin defaults unless the user overrides -------------------------------------------------
+m = L.resolve_models()
+check(m["profile"] == "balanced" and m["profile_source"] == "default" and not m["errors"], f"default models: {m}")
+check(all(o["source"] == "default" for o in m["operations"].values()) and m["operations"]["transcript_edit"]["fallback"] == "opus",
+      "no user choice -> plugin defaults, with a fallback tier")
+m = L.resolve_models({"profile": "fast", "overrides": {"aeo_review": "opus", "bogus": "opus", "transcript_edit": "gpt"}})
+check(m["profile"] == "fast" and m["operations"]["transcript_edit"] == {**m["operations"]["transcript_edit"], "model": "haiku", "source": "profile"}
+      and m["operations"]["aeo_review"]["model"] == "opus" and m["operations"]["aeo_review"]["source"] == "override"
+      and len(m["errors"]) == 2, f"profile + override, bad entries reported not applied: {m}")
+check(L.setup_status()["models"]["profile_source"] == "default", "setup_status carries the models")
+bad = L.save_setup(models={"profile": "turbo"})
+check(not bad["ok"] and any("models.profile" in e for e in bad["errors"]), "invalid models profile rejected")
+ok = L.save_setup(models={"profile": "quality", "overrides": {"transcript_edit": "haiku"}})
+check(ok["ok"] and ok["models"]["operations"]["transcript_edit"]["source"] == "override"
+      and ok["models"]["operations"]["knowledge_map_sections"]["model"] == "opus", f"models saved: {ok.get('models')}")
+check(L.load_json(L.USER_DIR / "config.json")["models"]["profile"] == "quality", "models stored in config.json")
+ok = L.save_setup(models={})
+check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.load_config(), "models {} resets to defaults")
+
 if "--write-article" in sys.argv:
     out = Path(sys.argv[sys.argv.index("--write-article") + 1])
     out.parent.mkdir(parents=True, exist_ok=True)

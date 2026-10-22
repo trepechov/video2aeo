@@ -7,6 +7,10 @@ video2aeo command line (same functions as the local MCP tools).
   python3 aeo.py render <episode-dir> [--outputs youtube,wordpress] [--brand local-brand.json]
                                                                         episode.json -> the requested outputs (default: all that have content)
   python3 aeo.py validate <episode-dir> [--outputs ...] [--brand ...]   checks + work/review.md
+  python3 aeo.py split <episode-dir> [--minutes N] [--force]            cut the raw transcript into chunks (work/chunks/)
+  python3 aeo.py merge <episode-dir>                                     join the edited chunks into work/transcript.edited.md
+  python3 aeo.py episode-status [episode-dir]                            where the episode stands + next action (default: latest unfinished)
+  python3 aeo.py progress <episode-dir> <step> [--error TEXT] [--ok] [--defer-gate A|youtube]   note an attempt / deferred gate
   python3 aeo.py status                                                  is the one-time brand setup done?
   python3 aeo.py doctor                                                  check Python, folders, optional downloaders
   python3 aeo.py save-setup <answers.json>                               write ~/.video2aeo/ files (keys: brand, glossary, guidelines_md, guidelines_off)
@@ -20,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
+import aeo_pipeline as P  # noqa: E402
 
 
 def main(argv=None):
@@ -35,6 +40,11 @@ def main(argv=None):
     sub.choices["render"].add_argument("--article", choices=["classic", "v2"], default="classic",
                                        help="article variant; 'v2' writes article.v2.wp.html + wp-post-fields.v2.json")
     w = sub.add_parser("wp-draft"); w.add_argument("dir"); w.add_argument("--config"); w.add_argument("--brand")
+    sp = sub.add_parser("split"); sp.add_argument("dir"); sp.add_argument("--minutes", type=float); sp.add_argument("--force", action="store_true")
+    sub.add_parser("merge").add_argument("dir")
+    es = sub.add_parser("episode-status"); es.add_argument("dir", nargs="?")
+    pg = sub.add_parser("progress"); pg.add_argument("dir"); pg.add_argument("step"); pg.add_argument("--error"); pg.add_argument("--ok", action="store_true")
+    pg.add_argument("--defer-gate", choices=["A", "youtube"])
     m = sub.add_parser("info"); m.add_argument("url")
     sub.add_parser("status")
     sub.add_parser("doctor")
@@ -54,6 +64,14 @@ def main(argv=None):
         out = L.check_environment()
     elif a.cmd == "save-setup":
         out = L.save_setup(**L.load_json(a.file))
+    elif a.cmd == "split":
+        out = P.split_transcript(Path(a.dir), a.minutes, a.force)
+    elif a.cmd == "merge":
+        out = P.merge_transcript(Path(a.dir))
+    elif a.cmd == "episode-status":
+        out = P.episode_status(Path(a.dir)) if a.dir else (P.find_unfinished() or {"ok": True, "step": "none", "message": "No unfinished episode under the episodes root."})
+    elif a.cmd == "progress":
+        out = P.record_progress(Path(a.dir), a.step, a.error, a.ok or None, a.defer_gate)
     elif a.cmd == "transcript":
         out = N.fetch_transcript(a.url, Path(a.dir), a.lang or L.load_brand().get("language", "bg"))
     elif a.cmd == "import":

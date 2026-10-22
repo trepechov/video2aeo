@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -92,10 +92,11 @@ Notes:
   `article_label`, `chapters_heading`, `host_label`, `guest_label`, the footer's fixed lines, `article.labels.*`,
   `article.disclaimer`, `site.kb_name`, and the `currency.rule` wording. Show them to the user and let them correct
   them. Write any later copy in that language.
-- **Model tip (after question 1, say it once):** the plugin cannot switch models itself; the model is chosen in the
-  Claude app's model picker and is used for reading, analysing and writing. Pick the most capable model available,
-  and for a language other than English or Bulgarian check the first episode's edited transcript against the audio
-  before trusting the rest. Do not name a "best" model for a language from memory.
+- **Models (after question 1, say it once, in one sentence):** nothing to choose – the plugin runs the heavy, mechanical
+  work (editing the transcript chunk by chunk, extracting the knowledge map, the review) on suitable models by itself,
+  whatever model is selected in the app; the selected model is only used for writing the final copy. For a language other
+  than English or Bulgarian check the first episode's edited transcript against the audio before trusting the rest. Do not
+  name a "best" model for a language from memory. Only when the user asks to change the models, use the „Models“ extra in section 8.
 
 ## 2. Description template: header, footer, ads
 
@@ -262,6 +263,14 @@ followed – and the next step (`/video2aeo:episode` with the episode's YouTube 
 ## 8. Optional extras (skip by default)
 
 Offer these only if the user asks, or after the first episode:
+
+- **Models** – only when the user asks to change which models do the work (e.g. „искам най-бързо“ or „искам най-доброто
+  качество“). Show `setup_status.models` in plain words: for each operation its `label`, the model in use and whether it is
+  the plugin default. Offer the three profiles: **fast** (lightest models, quickest, good for routine episodes),
+  **balanced** (the default, the plugin's own choice) and **quality** (heaviest models where it matters, slowest); then,
+  only if asked, a model (`haiku` · `sonnet` · `opus` · `inherit` = the model selected in the app) for a single operation.
+  Show the result and save it with `save_setup(models={"profile": "…", "overrides": {"<operation>": "…"}})`; `models={}` goes
+  back to the defaults. Without this request, never ask about models and never save them.
 
 - **Automatic subtitle download** – not needed: the user can always attach the transcript `.txt` (YouTube Studio →
   Subtitles → download, or copy „Show transcript“). No YouTube login or API key is needed for public videos. If the

@@ -228,6 +228,58 @@ def episodes_root():
     return Path(v).expanduser() if isinstance(v, str) and v.strip() else None
 
 
+MODEL_ALIASES = ("haiku", "sonnet", "opus", "fable", "inherit")
+MODEL_TIERS = ("haiku", "sonnet", "opus")  # retry order when a delegated call fails: one tier up
+
+
+def _models_errors(user, table: dict) -> list:
+    """Problems in a user `models` section ({profile, overrides}); [] when it is usable."""
+    if user in (None, {}):
+        return []
+    if not isinstance(user, dict):
+        return ["models must be an object: {\"profile\": ..., \"overrides\": {...}}."]
+    errors = []
+    profiles = list(table["operations"][next(iter(table["operations"]))]["profiles"])
+    unknown = sorted(set(user) - {"profile", "overrides"})
+    if unknown:
+        errors.append(f"models: unknown keys {unknown}; use profile and overrides.")
+    if user.get("profile") not in (None, "") and user["profile"] not in profiles:
+        errors.append(f"models.profile must be one of {profiles}, got {user['profile']!r}.")
+    ov = user.get("overrides")
+    if ov is not None and not isinstance(ov, dict):
+        errors.append("models.overrides must be an object: operation -> model alias.")
+    for op, m in (ov or {}).items() if isinstance(ov, dict) else []:
+        if op not in table["operations"]:
+            errors.append(f"models.overrides.{op}: unknown operation; known: {list(table['operations'])}.")
+        elif m not in MODEL_ALIASES:
+            errors.append(f"models.overrides.{op} must be one of {list(MODEL_ALIASES)}, got {m!r}.")
+    return errors
+
+
+def resolve_models(user=None) -> dict:
+    """The model for every delegated operation: user override > user profile > plugin default profile.
+    `user` defaults to the `models` section of ~/.video2aeo/config.json. Invalid entries are ignored and listed
+    under `errors`, so a typo never stops an episode. Each operation carries `fallback` (the next tier up or "")."""
+    table = load_json(PLUGIN_ROOT / "config" / "models.json")
+    if user is None:
+        user = load_config().get("models")
+    errors = _models_errors(user, table)
+    user = user if isinstance(user, dict) else {}
+    profiles = list(table["operations"][next(iter(table["operations"]))]["profiles"])
+    explicit = user.get("profile") in profiles
+    profile = user["profile"] if explicit else table["default_profile"]
+    overrides = user.get("overrides") if isinstance(user.get("overrides"), dict) else {}
+    ops = {}
+    for op, spec in table["operations"].items():
+        model, source = spec["profiles"][profile], "profile" if explicit else "default"
+        if overrides.get(op) in MODEL_ALIASES:
+            model, source = overrides[op], "override"
+        nxt = MODEL_TIERS[MODEL_TIERS.index(model) + 1] if model in MODEL_TIERS[:-1] else ""
+        ops[op] = {"model": model, "source": source, "fallback": nxt, "label": spec.get("label", "")}
+    return {"profile": profile, "profile_source": "user" if explicit else "default",
+            "profiles": profiles, "operations": ops, "errors": errors}
+
+
 def series_folder(brand: dict, profile: str | None = None) -> str:
     """Series folder of a format profile: its `folder` slug, else its id as a slug; `_other` for the base format."""
     prof = (brand.get("formats") or {}).get(profile or "")
@@ -477,6 +529,7 @@ def setup_status() -> dict:
             "guidelines_md": guidelines_md,
         },
         "guidelines_off": info.get("guidelines_off", []),
+        "models": resolve_models(),
     }
 
 
@@ -522,7 +575,8 @@ def _expand_dotted(d: dict) -> dict:
 
 
 def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelines_md: str | None = None,
-               guidelines_off: list | None = None, episodes_root: str | None = None) -> dict:
+               guidelines_off: list | None = None, episodes_root: str | None = None,
+               models: dict | None = None) -> dict:
     """Write the user's brand files to USER_DIR (fixed file names only).
     brand/glossary are merged over any existing file; omitted arguments keep what is saved.
     Skipped optional fields are saved as empty text. Everything is validated before anything is written."""
@@ -554,7 +608,10 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                 errors.append(f"episodes_root {root_path} is not writable.")
             else:
                 root_path = root_path.resolve()
-    if brand is None and glossary is None and guidelines_md is None and guidelines_off is None and episodes_root is None:
+    if models is not None:
+        errors += _models_errors(models, load_json(PLUGIN_ROOT / "config" / "models.json"))
+    if (brand is None and glossary is None and guidelines_md is None and guidelines_off is None
+            and episodes_root is None and models is None):
         errors.append("Nothing to save.")
     brand = _expand_dotted(brand) if isinstance(brand, dict) else brand
     pos = _get(brand or {}, ("description", "promo_position"))
@@ -624,6 +681,15 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         cfg_path = USER_DIR / "config.json"
         cfg = read_or_set_aside(cfg_path)
         cfg["episodes_root"] = str(root_path)
+        writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+
+    if models is not None:  # replaces the saved section; {} goes back to the plugin defaults
+        cfg_path = USER_DIR / "config.json"
+        cfg = read_or_set_aside(cfg_path) if cfg_path not in writes else json.loads(writes[cfg_path])
+        if models:
+            cfg["models"] = {k: v for k, v in models.items() if v not in ("", None, {})}
+        if not models or not cfg["models"]:
+            cfg.pop("models", None)
         writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
 
     if guidelines_md is not None:

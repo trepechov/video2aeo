@@ -60,14 +60,21 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 |---|---|---|
 | Skill | `episode` | `/video2aeo:episode` – transcript → knowledge map → YouTube description |
 | Skill | `wp-article` | `/video2aeo:wp-article` – article for an episode |
+| Skill | `resume` | `/video2aeo:resume` – continue an episode that crashed or stopped half way, from the files on disk |
 | Skill | `setup` | One-time setup on the marketer's computer |
 | Agent | `transcript-editor` | Raw transcript → edited transcript |
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
 | Agent | `aeo-reviewer` | Independent review before each approval |
-| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `import_transcript`, `render_package`, `validate_package`; optional `get_video_info`, `fetch_transcript`, `wp_push_draft` |
+| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
 Agents and the local tool server load in **Cowork tasks running on the computer** (Claude desktop app) and in Claude
 Code. In plain chat only the skills load: the user pastes the transcript and the agent follows the same steps.
+
+**Long episodes and crashes.** The transcript is edited in chunks (`work/chunks/`), each finished chunk is a file, and
+`episode_status` works out where an episode stands from the files – so after a crash `/video2aeo:resume` continues with
+only what is left. **Models:** heavy, mechanical steps run on suitable models by themselves (defaults in
+`config/models.json`), whatever model is selected in the app. To change that, ask the `setup` skill to „change the
+models“ (profile fast / balanced / quality, or single operations).
 
 ## Brand, glossary and guidelines
 

@@ -16,7 +16,7 @@ description: |
   assistant: "Let me run the aeo-reviewer agent and summarise its findings."
   <commentary>Pre-publication review is this agent's job.</commentary>
   </example>
-model: inherit
+model: sonnet
 color: yellow
 tools: ["Read", "Grep"]
 ---

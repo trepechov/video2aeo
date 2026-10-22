@@ -16,7 +16,7 @@ description: |
   assistant: "I'll rerun the transcript-editor agent with the corrected glossary."
   <commentary>Glossary fixes and sponsor tagging are this agent's job.</commentary>
   </example>
-model: inherit
+model: sonnet
 color: cyan
 tools: ["Read", "Write", "Edit", "Grep"]
 ---
@@ -32,6 +32,19 @@ switched-off guideline ids and the brand's episode format (`format` in `setup_st
 recurring segments, standard intro/outro wording, `notes` – background on the show such as recurring people and terms that must stay as spoken). Edit in the content language; the Bulgarian examples below show the method.
 
 **Output:** `<episode_dir>/work/transcript.edited.md`, then a short report back to the orchestrator.
+
+**Chunk mode (the normal case):** the orchestrator names one chunk `NN`. Input is `work/chunks/NN.raw.txt`; for NN > 1
+`work/chunks/NN.context.txt` is the end of the previous chunk – read it for speaker and sentence continuity, never copy it
+into your output. Write only `work/chunks/NN.edited.md`, in one Write call, so a crash never leaves a half file:
+- Same paragraph format and rules as below; every stamp must be one of the raw chunk's stamps.
+- Only chunk 1 starts with the `# Транскрипт – <title>` line and the speakers line; later chunks start straight with a paragraph
+  (or a marker). Use the speaker names and teaser range from the orchestrator's context card.
+- Chunk 1 decides the teaser: compare its first `teaser_max_minutes` minutes with the later raw chunks
+  (`Grep` in `work/chunks/*.raw.txt`) – you may read them, you edit only your own chunk.
+- Markers open and close inside the chunk. A sponsor read or other block that runs over the chunk border is closed at the
+  end of this chunk and opened again at the start of the next one; the merge joins them.
+- Keep the length: the edited chunk is checked against the raw one (fillers go, content stays) and a much shorter or truncated
+  file is rejected.
 
 **Process:**
 1. Read the whole raw transcript first to identify speakers, segments, the sponsor read(s) and recurring ASR errors.

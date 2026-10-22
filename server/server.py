@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
+import aeo_pipeline as P  # noqa: E402
 
 SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
@@ -44,6 +45,7 @@ TOOLS = [
          "guidelines_md": {"type": "string", "description": "Full text of guidelines.md: existing house rules plus the 'Switched-off guidelines' section"},
          "guidelines_off": {"type": "array", "items": {"type": "string"},
                             "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"},
+         "models": {"type": "object", "description": "Optional model choice for delegated work, only when the user asks to change it: {\"profile\": \"fast\"|\"balanced\"|\"quality\", \"overrides\": {\"<operation>\": \"haiku\"|\"sonnet\"|\"opus\"|\"fable\"|\"inherit\"}}. Replaces the saved choice; {} goes back to the plugin defaults. Operations and current values: setup_status.models."},
          "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>); saved in config.json. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."}}}},
     {"name": "workspace_status",
      "description": "Is the folder this session runs in a good place for episode files? Call right after setup_status in /video2aeo:episode and "
@@ -75,6 +77,25 @@ TOOLS = [
      "description": "Parse a transcript file the user downloaded or pasted (VTT, SRT, YouTube 'MM:SS text' copy, JSON) into work/transcript.raw.*",
      "inputSchema": {"type": "object", "properties": {"file": {"type": "string"}, "episode_dir": DIR, "format": {"type": "string", "description": "Id of the brand's format profile (setup_status.current.formats) of this episode; omit for the base format"}},
                      "required": ["file", "episode_dir"]}},
+    {"name": "split_transcript",
+     "description": "Cut work/transcript.raw.txt into chunks (work/chunks/NN.raw.txt, with NN.context.txt) so a long transcript is edited piece by piece and a crash loses at most one chunk. "
+                    "Episodes under 25 minutes stay one chunk. Safe to call again: the same transcript returns the existing split; a changed transcript or `minutes` re-splits and keeps edited chunks whose text is unchanged. "
+                    "Returns the chunk list, which are done / todo / invalid.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR,
+                     "minutes": {"type": "number", "description": "Chunk length in minutes (min 3). Omit for the default (10); use a smaller value to retry after a failed chunk."},
+                     "force": {"type": "boolean", "description": "Re-split even if nothing changed"}}, "required": ["episode_dir"]}},
+    {"name": "merge_transcript",
+     "description": "Check every work/chunks/NN.edited.md (stamps, length, marker balance) and join them into work/transcript.edited.md. "
+                    "Returns ok false with the todo / invalid chunk numbers and reasons when a chunk must be redone.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}, "required": ["episode_dir"]}},
+    {"name": "episode_status",
+     "description": "Where does the episode stand? Derived from the files in the episode folder: current step, done steps, next_action, chunk progress, pending human gate, open (deferred) gates. "
+                    "Without episode_dir returns the most recently touched unfinished episode under the episodes root. Call it at the start of /video2aeo:episode and /video2aeo:resume, and after a crash.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}}},
+    {"name": "progress_note",
+     "description": "Record an attempt, a failure or a deferred gate in work/progress.json. error: a step or chunk failed (counts an attempt, e.g. step \"chunk-03\"); ok: it succeeded; defer_gate: an unattended run continued past Gate A / the YouTube approval, which stay open.",
+     "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "step": {"type": "string"}, "error": {"type": "string"},
+                     "ok": {"type": "boolean"}, "defer_gate": {"type": "string", "enum": ["A", "youtube"]}}, "required": ["episode_dir", "step"]}},
     {"name": "render_package",
      "description": "Render work/episode.json into the requested outputs: youtube-description.txt, article.wp.html (Gutenberg) "
                     "+ wp-post-fields.json + work/schema.jsonld. Deterministic – never edit those files by hand; "
@@ -92,9 +113,10 @@ TOOLS = [
 
 
 GATED = {"get_video_info", "fetch_transcript", "import_transcript", "render_package", "validate_package",
-         "wp_push_draft", "episode_path"}
+         "wp_push_draft", "episode_path", "split_transcript", "merge_transcript", "episode_status", "progress_note"}
 # Tools that write into an episode folder: it must sit in the episodes-root layout (or be an existing episode).
-GUARDED = {"fetch_transcript", "import_transcript", "render_package", "validate_package", "wp_push_draft"}
+GUARDED = {"fetch_transcript", "import_transcript", "render_package", "validate_package", "wp_push_draft",
+           "split_transcript", "merge_transcript", "progress_note"}
 for _tool in TOOLS:
     if _tool["name"] in GUARDED:
         _tool["inputSchema"]["properties"]["allow_outside_root"] = {
@@ -112,17 +134,27 @@ def call(name, args):
         return L.check_environment()
     if name == "save_setup":
         return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"),
-                            args.get("episodes_root"))
+                            args.get("episodes_root"), args.get("models"))
     if name == "workspace_status":
         return L.classify_workspace(args.get("cwd") or None)
     if name in GATED:
         blocked = L.require_setup()
         if blocked:
             return blocked
-    if name in GUARDED:
+    if name == "episode_status" and not args.get("episode_dir"):
+        return P.find_unfinished() or {"ok": True, "step": "none", "message": "No unfinished episode under the episodes root."}
+    if name in GUARDED or (name == "episode_status" and args.get("episode_dir")):
         wrong = L.check_episode_dir(args["episode_dir"], bool(args.get("allow_outside_root")))
         if wrong:
             return wrong
+    if name == "split_transcript":
+        return P.split_transcript(Path(args["episode_dir"]), args.get("minutes"), bool(args.get("force")))
+    if name == "merge_transcript":
+        return P.merge_transcript(Path(args["episode_dir"]))
+    if name == "episode_status":
+        return P.episode_status(Path(args["episode_dir"]))
+    if name == "progress_note":
+        return P.record_progress(Path(args["episode_dir"]), args["step"], args.get("error"), args.get("ok"), args.get("defer_gate"))
     if name == "episode_path":
         return L.episode_path(_brand(), args.get("format") or None, args.get("upload_date"), args["slug"], args.get("number"))
     if name == "get_video_info":

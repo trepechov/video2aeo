@@ -7,7 +7,7 @@ description: >
   episode's work/episode.json, renders article.wp.html and wp-post-fields.json, and stops at an approval step; an
   optional draft push to WordPress follows only on request.
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # /video2aeo:wp-article – knowledge-base article for an episode
@@ -49,7 +49,7 @@ guideline ids from `setup_status.guidelines_off`.
 3. `render_package(episode_dir, outputs=["wordpress"])` → `article.wp.html`, `wp-post-fields.json`, `work/schema.jsonld`.
 4. `validate_package(episode_dir, outputs=["wordpress"])`. Fix every error in `episode.json` and re-render; never edit
    the rendered file. Placeholders for related links are listed for the editor.
-5. Delegate a read-through to the `aeo-reviewer` agent (article only: answer-first, attribution, tables, FAQ/schema
+5. Delegate a read-through to the `aeo-reviewer` agent (`model` = `setup_status.models.operations.aeo_review.model`, `inherit` = leave out; article only: answer-first, attribution, tables, FAQ/schema
    parity, compliance). Apply fixes.
 
 ### ⏸ APPROVAL – WordPress article

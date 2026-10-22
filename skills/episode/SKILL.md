@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
@@ -37,6 +37,11 @@ Read, once at the start and in this order:
 4. User/brand instructions, if present: `~/.video2aeo/guidelines.md` and every `~/.video2aeo/guidelines/*.md`. They extend
    and override the general guidelines – but never the rules the code enforces (YouTube limits, chapter rules,
    number traceability).
+Models: every agent call gets the model of its operation from `setup_status.models.operations.<operation>.model`
+(`transcript_edit`, `knowledge_map_sections`, `knowledge_map_merge`, `aeo_review`) as the Agent tool's `model`; `inherit`
+means leave `model` out. Never choose a model yourself and never pick a heavier one "to be safe" – the defaults are tuned
+for speed. If a delegated call fails or its output is rejected twice, retry once with that operation's `fallback` model
+and note it (`progress_note`). If `models.errors` is not empty, mention it once; the defaults are used for the bad entries.
 Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the content language
 (`language_name` from `setup_status.current`), the switched-off guideline ids (`setup_status.guidelines_off`) –
 those general guidelines are not applied anywhere in the episode – and the episode's format (the base `setup_status.current.format` with the chosen profile from `current.formats` merged
@@ -96,12 +101,25 @@ wait. A transcript pasted in the chat can be saved to a file first and imported 
 If the tools are unavailable (plain chat, not a Cowork task on the computer), ask the user to paste or attach the
 transcript and follow the same steps, producing the output by the template in `instructions/youtube-description.md`.
 
-## Step 2 – Edited transcript
+## Step 2 – Edited transcript (in chunks, resumable)
 
-Delegate to the `transcript-editor` agent (inline following that agent's rules if agents are unavailable).
-Input: `work/transcript.raw.txt` + `${CLAUDE_PLUGIN_ROOT}/config/glossary.json` + `~/.video2aeo/glossary.json` (if it
-exists). Output: `work/transcript.edited.md` – speaker-labelled paragraphs with `[MM:SS]` stamps, fillers removed, ASR
-errors fixed, sponsor reads wrapped in `<!-- sponsor -->…<!-- /sponsor -->`. Meaning must never change.
+The transcript is edited chunk by chunk so a crash or a timeout loses at most one chunk.
+
+1. `split_transcript(episode_dir)` → `work/chunks/NN.raw.txt` (+ `NN.context.txt`, the end of the previous chunk, read-only).
+   Episodes under 25 minutes are one chunk and follow the same steps. Calling it again is safe.
+2. Delegate **chunk 1 alone** to the `transcript-editor` agent (`model` = `transcript_edit`): it finds the speakers, the teaser
+   and the first sponsor read, and writes `work/chunks/01.edited.md` including the `# Транскрипт – <title>` header. Give it the
+   chunk number, the paths, the glossary files, the language, the switched-off guideline ids and the format. Keep its report.
+3. Delegate the remaining chunks with the same inputs plus a short context card (speakers with roles as reported by chunk 1,
+   teaser range, glossary fixes found so far). Run up to 3 agents in parallel, one message with several Agent calls, then the
+   next batch. Each agent writes only its own `NN.edited.md`.
+4. Call `episode_status`. A chunk listed as `invalid` or `todo` is redone once (`progress_note` step `chunk-NN` with the
+   error; second try with the operation's `fallback` model). If a chunk still fails, `split_transcript(minutes=<half, ≥ 3>)`
+   – chunks with unchanged text are kept – and edit what is left. Stop and report after that.
+5. `merge_transcript(episode_dir)` → `work/transcript.edited.md`. It refuses until every chunk is complete and checks stamps,
+   length and markers. Show its `warnings` and the agents' reports (suspicious numbers, `[?]` places) at Gate A.
+
+Without agents, follow `agents/transcript-editor.md` yourself, chunk by chunk, with the same files.
 
 ## Step 3 – Knowledge map → work/episode.json
 
@@ -109,6 +127,12 @@ Delegate to the `knowledge-mapper` agent. It writes the core of `episode.json`: 
 `context`, 6–8 `questions`, knowledge-based `chapters`, `claims` (fact / opinion / forecast / promo, each with
 timestamp and speaker), `freshness_note`, `people`, hashtags and `article.slug`. The article body, FAQ and social
 copy are not written here – the other commands add them to the same file later.
+
+- **One chunk (short episode):** one call, `model` = `knowledge_map_merge`, mode "whole episode".
+- **Several chunks:** first section mode – one call per chunk (`model` = `knowledge_map_sections`, up to 3 in parallel) that
+  reads `work/chunks/NN.edited.md` and writes `work/map/NN.json`; then one merge call (`model` = `knowledge_map_merge`) that
+  reads `work/map/*.json` (and the transcript for spot checks) and writes `work/episode.json`. `episode_status` shows which
+  sections are missing after a crash.
 
 ### ⏸ GATE A – facts, names, chapters, title
 
@@ -121,8 +145,9 @@ Stop and present to the user, compactly:
 - for a selective-tier episode: the topics that were left out, so the user can add some back.
 
 Use AskUserQuestion for the title choice. Apply corrections to `episode.json`, set `gates.A` to
-`"<name or 'user'> <ISO date>"`. If the user is not present (unattended run), pick option 1, mark every open item in
-`work/review.md`, leave `gates.A` empty and continue.
+`"<name or 'user'> <ISO date>"`. If the user is not present (unattended run, e.g. started by the watchdog), pick option 1,
+mark every open item in `work/review.md`, leave `gates.A` empty, call `progress_note(step="gate_A", defer_gate="A")` so
+`episode_status` moves on, and continue. The gate stays listed under `open_gates` until a human sets it.
 
 ## Step 4 – Write the description copy
 
@@ -135,14 +160,16 @@ and footer come only from the brand config.
 1. `render_package(episode_dir, outputs=["youtube"])` → `youtube-description.txt`.
 2. `validate_package(episode_dir, outputs=["youtube"])` → errors / warnings / placeholders, writes `work/review.md`.
 3. Fix every error by editing `work/episode.json` (never the rendered file) and re-render. Re-validate.
-4. Delegate a read-through to the `aeo-reviewer` agent (answer-first, chapters, attribution, compliance of the
+4. Delegate a read-through to the `aeo-reviewer` agent (`model` = `aeo_review`; answer-first, chapters, attribution, compliance of the
    description, promo block unchanged). Apply fixes.
 
 ### ⏸ APPROVAL – YouTube description
 
 Send the user the description (SendUserFile) plus a 3-line summary: character count, number of chapters, open
 placeholders. Ask for edits; confirm that the promo/footer is unchanged from the approved brand text and that opinions
-and forecasts are attributed. On approval set `gates.youtube`.
+and forecasts are attributed. On approval set `gates.youtube`. In an unattended run stop here instead: never set
+`gates.youtube` yourself, call `progress_note(step="gate_youtube", defer_gate="youtube")` and report that the description
+is ready for approval.
 
 ## Step 6 – Hand-off
 

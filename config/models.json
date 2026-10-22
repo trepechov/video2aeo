@@ -1,0 +1,26 @@
+{
+  "_comment": "Default model per delegated operation. Values are model aliases (haiku, sonnet, opus, fable) or 'inherit' (the session model). With no user choice the default_profile applies. The user may switch the profile or pin single operations in ~/.video2aeo/config.json under 'models': {\"profile\": \"fast\", \"overrides\": {\"transcript_edit\": \"haiku\"}}. Precedence: override > profile > default_profile.",
+  "default_profile": "balanced",
+  "operations": {
+    "transcript_edit": {
+      "label": "Editing the transcript, one chunk at a time",
+      "profiles": {"fast": "haiku", "balanced": "sonnet", "quality": "sonnet"}
+    },
+    "knowledge_map_sections": {
+      "label": "Extracting questions, claims and people from each part of the transcript",
+      "profiles": {"fast": "sonnet", "balanced": "sonnet", "quality": "opus"}
+    },
+    "knowledge_map_merge": {
+      "label": "Choosing titles, questions and chapters for the whole episode",
+      "profiles": {"fast": "sonnet", "balanced": "opus", "quality": "opus"}
+    },
+    "description_copy": {
+      "label": "Writing the description and article copy (done by the session model)",
+      "profiles": {"fast": "inherit", "balanced": "inherit", "quality": "inherit"}
+    },
+    "aeo_review": {
+      "label": "Independent read-through before approval",
+      "profiles": {"fast": "haiku", "balanced": "sonnet", "quality": "sonnet"}
+    }
+  }
+}

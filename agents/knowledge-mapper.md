@@ -16,7 +16,7 @@ description: |
   assistant: "I'll have the knowledge-mapper agent update episode.json accordingly."
   <commentary>Structural changes go through episode.json, then re-render.</commentary>
   </example>
-model: inherit
+model: sonnet
 color: magenta
 tools: ["Read", "Write", "Edit", "Grep", "WebSearch", "WebFetch"]
 ---
@@ -30,6 +30,16 @@ episode is the best answer to, and you write the structured knowledge that every
 `~/.video2aeo/guidelines/*.md`) if present, then the edited transcript and video info, and the brand's episode format (`format` in `setup_status.current`) with its
 `notes` (background on the show: audience, tone, recurring people, terms – use it when choosing questions and wording)
 and the `coverage` plan from `get_video_info` / `import_transcript`.
+
+**Modes** (the orchestrator names one):
+- *Whole episode* – the process below on the full edited transcript.
+- *Section NN* (long episodes) – read only `work/chunks/NN.edited.md` and write `work/map/NN.json`, nothing else:
+  `{"section": NN, "range": "MM:SS–MM:SS", "topics": [{"t": <seconds>, "title": "...", "question": "...", "answer_points": ["..."]}],
+  "claims": [<same shape as `claims` in episode-schema.md>], "people": [...], "freshness_flags": ["..."], "excluded": ["teaser|sponsor|boilerplate ranges"]}`.
+  No titles, no coverage decisions, no web checks – those belong to the merge.
+- *Merge* – read every `work/map/*.json` (and the edited transcript for spot checks), apply the coverage plan across the whole
+  episode, and write `work/episode.json` as described below. Merge duplicates of the same question across sections (the later
+  timestamp wins for a teaser), keep chapter starts at real topic starts, and do the freshness web checks here.
 
 **Write:** `<episode_dir>/work/episode.json` exactly in the schema – only the core fields (`video`, `series`,
 `episode_number`, `people`, `answer_short`, `context`, `questions`, `chapters`, `claims`, `freshness_note`, `hashtags`,
