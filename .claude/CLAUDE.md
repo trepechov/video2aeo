@@ -26,6 +26,9 @@ Content language is **Bulgarian**; code, comments and docs are English.
 - `.mcp.json` + `server/server.py` – local stdio MCP server `video2aeo` (stdlib-only Python).
 - `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
   `VIDEO2AEO_HOME`). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
+- Episode folders: one `episodes_root` (setup → `~/.video2aeo/config.json`) → `<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/`;
+  paths are built by `episode_path`, the session folder is checked by `workspace_status`, and the output tools refuse
+  other locations (`aeo_lib`: `classify_workspace`, `check_episode_dir`; override `allow_outside_root`).
 - `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.video2aeo/` files.
 - `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`
   (setup flow and footer/promo rendering against a temp `VIDEO2AEO_HOME`). Not shipped.
@@ -54,7 +57,7 @@ server and fails (`${CLAUDE_PLUGIN_ROOT}` unset) – that is expected.
 claude plugin validate .
 python3 dev/smoke.py && /usr/bin/python3 dev/smoke.py                                          # setup, render + validate on the fictional fixture (3.14 and 3.9)
 (cd dev && npm i && npm run validate-blocks)                                                  # expect invalid: 0, first block core/embed
-grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules} --exclude=package-lock.json .   # expect no output
+grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules,episodes} --exclude=package-lock.json .   # expect no output
 ```
 Iterate in Claude Code: `claude --plugin-dir .`
 
@@ -66,13 +69,14 @@ Iterate in Claude Code: `claude --plugin-dir .`
 
 The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python3`, 3.9 here), not Homebrew's (3.14).
 
-## Status (12 Oct 2026)
+## Status (22 Oct 2026)
 v0.1 moved from a cloud session to the local Mac and made brand-neutral (plugin named `yt-aeo`). 0.4.0 renamed it to **Video2AEO** (`video2aeo`, settings `~/.video2aeo/`); the code still reads
 the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing. 0.5.0 added episode formats: `brand.format` +
 `brand.formats.<id>` profiles asked one question at a time in setup, a length-based coverage plan (`coverage_plan`), and
 teaser/boilerplate markers in the edited transcript.
+0.6.0 added the episodes root + series folders + workspace check (see `docs/plans/2026-10-22-001-…`).
 Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
-Desktop Cowork, live `fetch_transcript`, `wp_push_draft`.
+Desktop Cowork (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
 
 ## Next steps (full list: `docs/plugin-build-plan.md` §3)
 1. Publish on GitHub + marketplace; install in Desktop from it.

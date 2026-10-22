@@ -189,6 +189,198 @@ def require_setup():
             "missing": st["missing"], "unreadable": st["unreadable"], "user_dir": st["user_dir"]}
 
 
+# ----------------------------------------------------------------------------
+# episodes root, series folders, workspace check
+# ----------------------------------------------------------------------------
+# Layout: <episodes_root>/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/ (+ work/). The root is chosen once in setup
+# and saved in config.json; the series folder is the format profile's `folder` slug (`_other` for the base format).
+# The session folder cannot be chosen by the plugin, so the skills check it (classify_workspace) and the output tools
+# refuse paths outside the layout (check_episode_dir).
+
+OTHER_SERIES = "_other"
+SERIES_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+_BG_TO_LATIN = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ж": "zh", "з": "z", "и": "i", "й": "y",
+                "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+                "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sht", "ъ": "a", "ь": "y", "ю": "yu",
+                "я": "ya"}
+HOME_SUBFOLDERS_NOT_FOR_EPISODES = ("Desktop", "Downloads", "Documents")
+
+
+def slugify(text: str, max_len: int = 40) -> str:
+    """Lowercase ASCII slug; Bulgarian letters are transliterated. May be empty."""
+    s = "".join(_BG_TO_LATIN.get(ch, ch) for ch in str(text).lower())
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s[:max_len].strip("-")
+
+
+def load_config() -> dict:
+    """~/.video2aeo/config.json (episodes_root, youtube, wordpress); {} when missing or damaged."""
+    try:
+        data = load_json(USER_DIR / "config.json")
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def episodes_root():
+    """The saved episodes root as a Path, or None when setup has not stored one yet."""
+    v = load_config().get("episodes_root")
+    return Path(v).expanduser() if isinstance(v, str) and v.strip() else None
+
+
+def series_folder(brand: dict, profile: str | None = None) -> str:
+    """Series folder of a format profile: its `folder` slug, else its id as a slug; `_other` for the base format."""
+    prof = (brand.get("formats") or {}).get(profile or "")
+    if not isinstance(prof, dict):
+        return OTHER_SERIES
+    return str(prof.get("folder") or "").strip() or slugify(profile) or OTHER_SERIES
+
+
+def series_folders(brand: dict) -> dict:
+    """{profile id: series folder} for every format profile."""
+    return {pid: series_folder(brand, pid) for pid in (brand.get("formats") or {})}
+
+
+def _within(child, parent) -> bool:
+    """True when `child` is `parent` or inside it. Uses samefile, so symlinks and case-insensitive disks are fine."""
+    c, p = Path(child).expanduser().resolve(), Path(parent).expanduser().resolve()
+    if not p.exists():
+        return False
+    for cand in (c, *c.parents):
+        try:
+            if cand.exists() and os.path.samefile(cand, p):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _has_episode(path: Path) -> bool:
+    return (Path(path) / WORK_DIR / "episode.json").is_file()
+
+
+def _is_suspicious(cwd: Path, temp: bool = True) -> str:
+    """Why this session folder is a poor place for episodes ('' when it is not one of the usual accidents).
+    temp=False skips the temporary-folder rules (used for a folder that merely contains the root)."""
+    home = Path.home().resolve()
+    if cwd == home:
+        return "it is the home folder"
+    if cwd.parent == home and cwd.name in HOME_SUBFOLDERS_NOT_FOR_EPISODES:
+        return f"it is the {cwd.name} folder"
+    if cwd == Path(cwd.anchor):
+        return "it is the top of the disk"
+    if not temp:
+        return ""
+    if "scratchpad" in (p.lower() for p in cwd.parts):
+        return "it is a temporary scratch folder"
+    for tmp in {Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve(), Path("/var/folders").resolve()}:
+        if _within(cwd, tmp):
+            return "it is a temporary folder"
+    return ""
+
+
+def classify_workspace(cwd=None) -> dict:
+    """Is the session folder a good place to work on an episode?
+    status: ok (in or around the episodes root) | inside_episode (resume) | suspicious | unknown | no_root.
+    `ok` is true only for ok and inside_episode; for the others the skill must stop and tell the user."""
+    root = episodes_root()
+    c = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+    brand = load_brand()
+    out = {"ok": False, "cwd": str(c), "episodes_root": str(root) if root else "", "episode_dir": "",
+           "series_folders": sorted(set(series_folders(brand).values()) | {OTHER_SERIES})}
+    if root is None:
+        return {**out, "status": "no_root", "reason": "No episodes folder is saved yet.",
+                "next_step": "Run the setup skill and answer the episodes-folder question (it can be the only change)."}
+    if not root.is_dir():
+        return {**out, "status": "no_root", "reason": f"The saved episodes folder {root} does not exist any more.",
+                "next_step": "Run the setup skill to choose the episodes folder again."}
+    for cand in (c, *list(c.parents)[:3]):
+        if _has_episode(cand):
+            return {**out, "ok": True, "status": "inside_episode", "episode_dir": str(cand),
+                    "reason": "The session folder is an existing episode – resume it.", "next_step": ""}
+    if _within(c, root) or (_within(root, c) and not _is_suspicious(c, temp=False)):
+        return {**out, "ok": True, "status": "ok", "reason": "The session folder is the episodes folder (or around it).",
+                "next_step": ""}
+    why = _is_suspicious(c)
+    nxt = (f"Reopen the task with the episodes folder selected: {root} (in Cowork choose it as the working folder "
+           f"when starting the task; in Claude Code start in it).")
+    if why:
+        return {**out, "status": "suspicious", "reason": f"The session folder {c} looks accidental: {why}.", "next_step": nxt}
+    return {**out, "status": "unknown", "reason": f"The session folder {c} is not the saved episodes folder {root}.",
+            "next_step": nxt}
+
+
+def _episode_date(upload_date) -> str:
+    digits = re.sub(r"\D", "", str(upload_date or ""))
+    if len(digits) >= 6 and 1990 <= int(digits[:4]) <= 2100 and 1 <= int(digits[4:6]) <= 12:
+        return f"{digits[:4]}-{digits[4:6]}"
+    return datetime.date.today().strftime("%Y-%m")
+
+
+def _series_part(series: str) -> str:
+    return series.lstrip("_") or "other"
+
+
+def episode_path(brand: dict, profile: str | None, upload_date, slug: str, number: int | None = None,
+                 create: bool = True) -> dict:
+    """Build (and create) the episode folder <root>/<series>/<yyyy-mm>-<series>-<nn>-<slug>/work.
+    Without `number` an existing folder with the same slug is reused, else the next free number is taken."""
+    root = episodes_root()
+    if root is None or not root.is_dir():
+        return {"ok": False, "episodes_root_missing": True,
+                "error": "No usable episodes folder is saved. Run the setup skill (episodes-folder question) first."}
+    slug = slugify(slug)
+    if not slug:
+        return {"ok": False, "error": "slug must contain letters or digits (Latin or Bulgarian)."}
+    series = series_folder(brand, profile)
+    part = _series_part(series)
+    sdir = root / series
+    when = _episode_date(upload_date)
+    if number is None:
+        pat = re.compile(r"^\d{4}-\d{2}-%s-(\d+)-%s$" % (re.escape(part), re.escape(slug)))
+        numbers = []
+        if sdir.is_dir():
+            for d in sdir.iterdir():
+                m = d.is_dir() and pat.match(d.name)
+                if m:
+                    return {"ok": True, "episode_dir": str(d), "series_folder": series, "created": False}
+            num_pat = re.compile(r"^\d{4}-\d{2}-%s-(\d+)-" % re.escape(part))
+            numbers = [int(m.group(1)) for d in sdir.iterdir() for m in [num_pat.match(d.name)] if m and d.is_dir()]
+        number = max(numbers, default=0) + 1
+    ep_dir = sdir / f"{when}-{part}-{int(number):02d}-{slug}"
+    existed = ep_dir.is_dir()
+    if create:
+        try:
+            work_dir(ep_dir).mkdir(parents=True, exist_ok=True)
+        except OSError as ex:
+            return {"ok": False, "error": f"Could not create {ep_dir}: {ex}"}
+    return {"ok": True, "episode_dir": str(ep_dir), "series_folder": series, "created": not existed}
+
+
+def check_episode_dir(path, allow_outside_root: bool = False):
+    """None when the output tools may use this episode folder, else an error dict naming the expected layout.
+    Allowed: <root>/<known series folder>/<episode>, or any existing episode (work/episode.json) for resuming."""
+    root = episodes_root()
+    if root is None or not root.is_dir():
+        return {"ok": False, "episodes_root_missing": True,
+                "error": "No usable episodes folder is saved. STOP: run the setup skill (the episodes-folder question) "
+                         "first, then retry this step."}
+    if allow_outside_root:
+        return None
+    p = Path(path).expanduser().resolve()
+    if _has_episode(p):
+        return None
+    series = set(series_folders(load_brand()).values()) | {OTHER_SERIES}
+    if p.parent.parent.exists() and _within(p.parent.parent, root) and _within(root, p.parent.parent) \
+            and p.parent.name in series:
+        return None
+    expected = f"{root}/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>"
+    return {"ok": False, "wrong_folder": True, "got": str(p), "expected": expected,
+            "series_folders": sorted(series),
+            "error": f"{p} is not inside the episodes folder layout. STOP: do not write here. Use the path from "
+                     f"episode_path ({expected}), or ask the user to confirm and retry with allow_outside_root."}
+
+
 def _get(d: dict, path: tuple):
     for k in path:
         d = d.get(k) if isinstance(d, dict) else None
@@ -280,6 +472,8 @@ def setup_status() -> dict:
             "footer": d.get("footer", ""),
             "format": brand.get("format", {}),
             "formats": brand.get("formats", {}),
+            "episodes_root": str(episodes_root() or ""),
+            "series_folders": series_folders(brand),
             "guidelines_md": guidelines_md,
         },
         "guidelines_off": info.get("guidelines_off", []),
@@ -328,7 +522,7 @@ def _expand_dotted(d: dict) -> dict:
 
 
 def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelines_md: str | None = None,
-               guidelines_off: list | None = None) -> dict:
+               guidelines_off: list | None = None, episodes_root: str | None = None) -> dict:
     """Write the user's brand files to USER_DIR (fixed file names only).
     brand/glossary are merged over any existing file; omitted arguments keep what is saved.
     Skipped optional fields are saved as empty text. Everything is validated before anything is written."""
@@ -346,7 +540,21 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
             unknown = sorted(set(map(str, guidelines_off)) - set(ADJUSTABLE_GUIDELINES))
             if unknown:
                 errors.append(f"Unknown or locked guideline ids: {unknown}. Adjustable ids: {list(ADJUSTABLE_GUIDELINES)}.")
-    if brand is None and glossary is None and guidelines_md is None and guidelines_off is None:
+    root_path = None
+    if episodes_root is not None:
+        if not isinstance(episodes_root, str) or not episodes_root.strip():
+            errors.append("episodes_root must be the absolute path of a folder.")
+        else:
+            root_path = Path(episodes_root.strip()).expanduser()
+            if not root_path.is_absolute():
+                errors.append("episodes_root must be an absolute path.")
+            elif not root_path.is_dir():
+                errors.append(f"episodes_root {root_path} is not an existing folder.")
+            elif not os.access(root_path, os.W_OK):
+                errors.append(f"episodes_root {root_path} is not writable.")
+            else:
+                root_path = root_path.resolve()
+    if brand is None and glossary is None and guidelines_md is None and guidelines_off is None and episodes_root is None:
         errors.append("Nothing to save.")
     brand = _expand_dotted(brand) if isinstance(brand, dict) else brand
     pos = _get(brand or {}, ("description", "promo_position"))
@@ -364,6 +572,20 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                 errors += _format_errors(prof, f"formats.{pid}")
                 if isinstance(prof, dict) and not str(prof.get("label", "")).strip():
                     errors.append(f"formats.{pid}.label (a plain name the user recognises) is required.")
+                folder = prof.get("folder") if isinstance(prof, dict) else None
+                if folder is not None and (not isinstance(folder, str) or not SERIES_SLUG_RE.match(folder)
+                                           or folder == OTHER_SERIES):
+                    errors.append(f"formats.{pid}.folder must be a short Latin slug (a-z, 0-9, '-'), got {folder!r}.")
+            try:
+                known = load_json(USER_DIR / "brand.json").get("formats") or {} if (USER_DIR / "brand.json").exists() else {}
+            except (OSError, ValueError, AttributeError):
+                known = {}
+            used: dict = {}
+            for pid, prof in _deep_merge(known if isinstance(known, dict) else {}, profiles).items():
+                f = series_folder({"formats": {pid: prof}}, pid) if isinstance(prof, dict) else ""
+                if f in used and f != OTHER_SERIES:
+                    errors.append(f"formats.{pid} and formats.{used[f]} share the series folder {f!r}; folders must be unique.")
+                used[f] = pid
 
     if errors:
         return {"ok": False, "errors": errors, **setup_status()}
@@ -397,6 +619,12 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                 if v is None or PLACEHOLDER_RE.search(str(v)):
                     _set(merged, p, "")
         writes[path] = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
+
+    if root_path is not None:
+        cfg_path = USER_DIR / "config.json"
+        cfg = read_or_set_aside(cfg_path)
+        cfg["episodes_root"] = str(root_path)
+        writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
 
     if guidelines_md is not None:
         writes[USER_DIR / "guidelines.md"] = guidelines_md.rstrip() + "\n"

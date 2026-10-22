@@ -15,7 +15,7 @@ else
   echo "npm not found – WordPress block validator skipped"
 fi
 if [ -f private/brand-terms.txt ]; then
-  if grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules} --exclude=package-lock.json .; then
+  if grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules,episodes} --exclude=package-lock.json .; then
     echo "brand terms found in tracked files"; exit 1
   fi
 fi

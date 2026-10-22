@@ -136,6 +136,93 @@ check(L.setup_status()["unreadable"], "corrupt brand.json must be reported")
 r = L.save_setup(brand={"channel": "Demo", "topics": "money"})
 check(r["ok"] and r["configured"] and "brand.json.broken" in r["set_aside"], f"save must repair: {r}")
 
+# --- episodes root, series folders, workspace check, write guard -------------------------------------
+root = TMP / "episodes-root"
+root.mkdir()
+check(L.classify_workspace(root)["status"] == "no_root", "no saved root -> no_root")
+wrong = L.check_episode_dir(root / "x" / "y")
+check(wrong and wrong.get("episodes_root_missing"), "guard must demand a saved root")
+check(L.save_setup(episodes_root="relative/path")["ok"] is False, "relative episodes_root rejected")
+check(L.save_setup(episodes_root=str(TMP / "nope"))["ok"] is False, "missing episodes_root folder rejected")
+check(L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "Bad Slug"}}})["ok"] is False, "bad folder slug rejected")
+check(L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "_other"}}})["ok"] is False, "_other reserved")
+cfgp = L.USER_DIR / "config.json"
+cfgp.write_text('{"wordpress": {"site": "x"}}', encoding="utf-8")
+r = L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "clips"}}}, episodes_root=str(root))
+check(r["ok"] and r["current"]["episodes_root"] == str(root.resolve()), f"episodes_root not saved: {r.get('errors')}")
+check(L.load_json(cfgp) == {"wordpress": {"site": "x"}, "episodes_root": str(root.resolve())}, "config.json keys must be preserved")
+check(r["current"]["series_folders"] == {"clips": "clips"}, f"series_folders: {r['current']['series_folders']}")
+check(L.save_setup(brand={"formats": {"talk": {"label": "Talk", "folder": "clips"}}})["ok"] is False, "duplicate series folder rejected")
+cfgp.unlink()
+L.save_setup(episodes_root=str(root))
+cfgp.write_text(json.dumps({"episodes_root": str(root.resolve())}), encoding="utf-8")
+
+b = L.load_brand()
+ws = L.classify_workspace(root)
+check(ws["ok"] and ws["status"] == "ok", f"cwd = root: {ws}")
+(root / "clips").mkdir()
+check(L.classify_workspace(root / "clips")["status"] == "ok", "series folder is ok")
+check(L.classify_workspace(TMP)["status"] == "ok", "session folder around the root is ok")
+link = TMP / "root-link"
+link.symlink_to(root, target_is_directory=True)
+check(L.classify_workspace(link)["status"] == "ok", "symlink to the root is ok")
+other = TMP / "elsewhere"
+other.mkdir()
+(other.parent / "legacy-ep" / "work").mkdir(parents=True)
+(other.parent / "legacy-ep" / "work" / "episode.json").write_text("{}", encoding="utf-8")
+sus = L.classify_workspace(Path.home())
+check(sus["status"] == "suspicious" and not sus["ok"] and str(root.resolve()) in sus["next_step"], f"home must be suspicious: {sus}")
+check(L.classify_workspace(Path.home() / "Downloads")["status"] in ("suspicious", "unknown"), "Downloads not ok")
+scratch = TMP / "scratchpad" / "s"
+scratch.mkdir(parents=True)
+check(L.classify_workspace(scratch)["status"] == "suspicious", "scratchpad must be suspicious")
+check(L.classify_workspace(Path("/"))["status"] == "suspicious", "disk root must be suspicious")
+
+p1 = L.episode_path(b, "clips", "20261012", "Нов епизод")
+check(p1["ok"] and p1["created"] and p1["episode_dir"].endswith("clips/2026-10-clips-01-nov-epizod"), f"episode_path: {p1}")
+check((Path(p1["episode_dir"]) / "work").is_dir(), "work/ must be created")
+p1b = L.episode_path(b, "clips", "20261012", "Нов епизод")
+check(p1b["episode_dir"] == p1["episode_dir"] and not p1b["created"], "same slug must reuse the folder")
+p2 = L.episode_path(b, "clips", "2026-10-20", "second")
+check(p2["episode_dir"].endswith("2026-10-clips-02-second"), f"next number: {p2}")
+(root / "clips" / "random-folder").mkdir()
+check(L.episode_path(b, "clips", None, "third", number=7)["episode_dir"].endswith("-clips-07-third"), "explicit number")
+p3 = L.episode_path(b, None, "20261105", "base show")
+check(p3["episode_dir"].endswith("_other/2026-11-other-01-base-show"), f"base format goes to _other: {p3}")
+check(L.episode_path(b, "clips", None, "!!!")["ok"] is False, "empty slug rejected")
+check(L.classify_workspace(p1["episode_dir"])["status"] == "ok", "a fresh episode folder (no episode.json yet) is inside the root")
+(Path(p1["episode_dir"]) / "work" / "episode.json").write_text("{}", encoding="utf-8")
+ins = L.classify_workspace(p1["episode_dir"])
+check(ins["ok"] and ins["status"] == "inside_episode" and ins["episode_dir"] == str(Path(p1["episode_dir"]).resolve()), f"resume: {ins}")
+
+check(L.check_episode_dir(p1["episode_dir"]) is None, "built path passes the guard")
+check(L.check_episode_dir(p3["episode_dir"]) is None, "_other path passes the guard")
+bad = L.check_episode_dir(TMP / "elsewhere" / "ep")
+check(bad and bad["wrong_folder"] and str(root.resolve()) in bad["expected"], f"outside path must fail: {bad}")
+check(L.check_episode_dir(root / "ep-directly-in-root")["wrong_folder"], "episode without series folder fails")
+check(L.check_episode_dir(root / "unknown-series" / "ep")["wrong_folder"], "unknown series folder fails")
+check(L.check_episode_dir(root / "clips" / ".." / ".." / "x")["wrong_folder"], "path traversal fails")
+check(L.check_episode_dir(TMP / "legacy-ep") is None, "existing episode outside the root may be resumed")
+check(L.check_episode_dir(TMP / "elsewhere" / "ep", allow_outside_root=True) is None, "override passes")
+
+# the MCP layer: wrong folder writes nothing, right folder works
+import importlib.util  # noqa: E402
+spec = importlib.util.spec_from_file_location("v2a_server", ROOT / "server" / "server.py")
+srv = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(srv)
+before = sorted(p.name for p in TMP.iterdir())
+res = srv.call("render_package", {"episode_dir": str(TMP / "elsewhere" / "ep")})
+check(res.get("wrong_folder") and sorted(p.name for p in TMP.iterdir()) == before, f"guarded tool must refuse: {res}")
+rpc = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                  "params": {"name": "workspace_status", "arguments": {"cwd": str(Path.home())}}})
+check(rpc["result"]["isError"] is False and "suspicious" in rpc["result"]["content"][0]["text"], "workspace_status over JSON-RPC")
+names = {t["name"] for t in srv.TOOLS}
+check({"workspace_status", "episode_path"} <= names, "new tools listed")
+check(all("allow_outside_root" in t["inputSchema"]["properties"] for t in srv.TOOLS if t["name"] in srv.GUARDED),
+      "override flag on guarded tools")
+res = srv.call("episode_path", {"slug": "via server", "format": "clips", "upload_date": "20261201"})
+check(res["ok"] and res["episode_dir"].endswith("-clips-08-via-server"), f"episode_path via server: {res}")
+
 # --- footer / promo rendering ---------------------------------------------------------------------
 top, foot = L._promo_and_footer(desc())
 check(top == "" and "{PROMO}" not in foot and "\n\n" not in foot, "empty promo must collapse separators")

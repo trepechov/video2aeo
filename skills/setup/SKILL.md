@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -169,6 +169,22 @@ Notes:
   ones people really ask. Say this in two sentences before asking 6.
 - The plan is computed per episode from its real length; the user can still ask for more or fewer at Gate A.
 
+### Where episodes are saved
+
+*Why:* every episode gets its own folder, and a task started in the wrong working folder would scatter them. The
+plugin saves **one episodes folder** and, inside it, **one folder per show** – `<episodes folder>/<show folder>/<episode>/`.
+Whenever a later task starts somewhere else, the plugin notices and asks to reopen it with the right folder.
+
+| # | Question | Type | | Saves |
+|---|---|---|---|---|
+| 1 | „В коя папка искате да се пазят всички епизоди? Всеки епизод ще получава своя папка вътре в папка на предаването.“ Suggest the folder this task runs in (run `pwd`; skip the suggestion if it is the home, Desktop, Downloads or a temporary folder) or `current.episodes_root` when set. It must be an existing folder; in Cowork it must be the task's working folder or inside it. | text | required | `episodes_root` (an argument of `save_setup`, not part of `brand`) |
+| 2 | for the main format and for every further format: „Как да се казва папката за това предаване?“ Suggest a short Latin name made from its label (small letters, digits and `-`, e.g. `show-a`) or `current.series_folders`. The main format has no folder of its own: its episodes go to `_other` unless the user names a show. Names must differ between formats. | text | required for each further format | `formats.<id>.folder` |
+
+Notes:
+- Episodes already saved elsewhere stay where they are and can still be continued.
+- When the user only wants to change the episodes folder (`current.episodes_root` is empty after an update of the plugin),
+  ask just question 1 and save it alone with `save_setup(episodes_root=…)`.
+
 ## 5. Guidelines
 
 *Why:* the user must look at the guidelines before they are saved; do not just ask "ok?".
@@ -217,7 +233,8 @@ Before saving, show the user **exactly what will be saved**, in plain words and 
 1. language, channel and topics, site and organization, people;
 2. the description header and footer (verbatim) and the promo text with its position;
 3. the glossary (names, caption fixes, sponsor markers);
-4. every episode format (speakers, teaser, recurring parts, coverage, notes and links);
+4. every episode format (speakers, teaser, recurring parts, coverage, notes and links), the episodes folder and the
+   folder name of each show;
 5. the guidelines switched off and the house rules.
 
 Then ask „Да запазя ли тези настройки?“ (choice, required: save · change something – a change returns to that step).
@@ -228,9 +245,10 @@ On approval call `save_setup` with:
   "organization": {"name": "…"}, "format": {"speakers": "host_and_guest", "opening_teaser": "always",
   "teaser_max_minutes": 3, "recurring_segments": "…", "intro_outro": "…",
   "coverage": {"full_until_minutes": 30, "selective_from_minutes": 75, "max_questions_selective": 10}},
-  "formats": {"clips": {"label": "Кратки клипове", "speakers": "solo", "coverage": {"full_until_minutes": 15}}},
+  "formats": {"clips": {"label": "Кратки клипове", "folder": "clips", "speakers": "solo", "coverage": {"full_until_minutes": 15}}},
   "description": {"header": "…", "footer": "…", "promo": "…", "promo_position": "end",
   "schedule": "…", "disclaimer_url": "…", "social_links": "…"}}` (plus translated labels for other languages);
+- `episodes_root` – the absolute path of the episodes folder (the show folder names go into `brand.formats.<id>.folder`);
 - `glossary` – the brand glossary from step 3 (omit only to keep what is saved);
 - `guidelines_md` and `guidelines_off` – omit either one to keep what is saved.
 

@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
@@ -16,6 +16,13 @@ metadata:
 `~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
 `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
+
+**Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,
+`unknown` or `no_root`), STOP before reading the transcript or creating anything: tell the user in one or two sentences
+(in the content language) what `reason` and `next_step` say – typically „Отворете задачата отново с избрана папката
+на епизодите: <episodes_root>“ – and wait. Do not offer to work in the current folder anyway; only if the user
+explicitly insists, continue and pass `allow_outside_root: true` to the output tools. When `status` is
+`inside_episode`, that `episode_dir` is the folder to resume.
 
 Turn one YouTube URL into an approved **YouTube description** and the shared knowledge map every other output is built
 from. Write every piece of text yourself; use the `video2aeo` tools (or
@@ -39,8 +46,13 @@ before writing `episode.json`.
 
 ## Episode folder
 
+The path is built by code, never by you: `episode_path(slug, format, upload_date, number?)` creates
+`<episodes root>/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/` (series folder = the format profile's `folder`,
+`_other` for the base format) and returns it as `episode_dir`. Use that exact path in every tool call; the output tools
+refuse any other location (`wrong_folder`).
+
 ```
-episodes/<yyyy-mm>-<series-short>-<nn>-<slug>/     e.g. episodes/2026-01-show-12-episode-slug
+<episode_dir>/
 ├── youtube-description.txt      ← paste-ready outputs, for the user (this command)
 ├── article.wp.html, wp-post-fields.json           (/video2aeo:wp-article)
 └── work/                        ← working files the user does not need to read
@@ -48,8 +60,8 @@ episodes/<yyyy-mm>-<series-short>-<nn>-<slug>/     e.g. episodes/2026-01-show-12
     └── schema.jsonld  review.md  wp-result.json
 ```
 
-Use absolute paths in every tool call. If the folder already exists with `work/episode.json`, resume from it instead
-of starting over (ask which step to redo only when the user did not say).
+If the folder already exists with `work/episode.json` (or the session is inside it), resume from it instead of
+starting over (ask which step to redo only when the user did not say).
 
 ## Step 0 – Set up
 
@@ -63,7 +75,10 @@ of starting over (ask which step to redo only when the user did not say).
    decides how many questions and chapters the map keeps. Keep `title`, `upload_date`, `duration_seconds`, `thumbnail_url`, `current_description`
    (the old description – reuse its approved footer/promo wording, never invent promo text). If the page request is
    rate-limited, continue with what came back and mark the missing fields as placeholders.
-5. Create the episode folder and its `work/` subfolder.
+5. Create the episode folder with `episode_path` (short Latin `slug` from the title; leave `number` out unless the
+   user or the title gives one) and **say where the files will go** before the first write, e.g.
+   „📁 Файловете ще се запазят в: <episode_dir>“. If the user corrects the series or the number, call `episode_path`
+   again for the right folder (an unused empty folder may stay).
 
 ## Step 1 – Transcript
 

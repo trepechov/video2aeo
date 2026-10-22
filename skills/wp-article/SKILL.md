@@ -7,7 +7,7 @@ description: >
   episode's work/episode.json, renders article.wp.html and wp-post-fields.json, and stops at an approval step; an
   optional draft push to WordPress follows only on request.
 metadata:
-  version: "0.5.1"
+  version: "0.6.0"
 ---
 
 # /video2aeo:wp-article – knowledge-base article for an episode
@@ -17,12 +17,19 @@ metadata:
 `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
+**Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,
+`unknown` or `no_root`), STOP and tell the user in one or two sentences (in the content language) what `reason` and
+`next_step` say – typically to reopen the task with the episodes folder selected – and wait. When `status` is
+`inside_episode`, that `episode_dir` is the episode to work on. Before the first write say where the files go:
+„📁 Файловете ще се запазят в: <episode_dir>“.
+
 The article is the **second** output of an episode. It is built from the knowledge map that `/video2aeo:episode`
 created – it does not re-derive facts from the audio.
 
 ## Inputs
 
-- The episode folder (the user names it, or take the newest under `episodes/`). It must contain `work/episode.json`
+- The episode folder (the user names it, the session is inside it, or take the newest episode folder under
+  `workspace_status.episodes_root` – `<series folder>/<episode>`). It must contain `work/episode.json`
   and `work/transcript.edited.md`. If not, stop and tell the user to run `/video2aeo:episode` first.
 - If `gates.A` is empty, say so and ask whether to continue anyway (facts, names and title are not yet approved).
 

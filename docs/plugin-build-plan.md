@@ -163,4 +163,10 @@ channel wants to own; monthly AI-visibility check (ask LLMs the episode question
 6. Open: gate owners and turnaround time.
 7. Open: channel-owner OAuth for Phase 2 captions + description push.
 
+8. **Decided (22 Oct 2026, 0.6.0):** all episodes live under one saved `episodes_root` (`config.json`), one folder per
+   show (`brand.formats.<id>.folder`, `_other` for the base format): `<root>/<series>/<yyyy-mm>-<series>-<nn>-<slug>/`.
+   The plugin cannot choose the session folder, so skills call `workspace_status` and stop when it is wrong, and the
+   output tools refuse paths outside the layout (`allow_outside_root` overrides). Plan: `docs/plans/2026-10-22-001-feat-episodes-root-series-folders-plan.md`.
+   Open: confirm in Desktop Cowork that the path the model sees (`pwd`) matches the path the MCP server sees.
+
 Brand-specific open questions (site, canonical URL, schedule wording) are tracked with the brand files, not here.

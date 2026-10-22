@@ -21,7 +21,7 @@ SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / 
 OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wordpress"]},
            "description": "Which outputs to handle. Omit for every output that already has content in episode.json. "
                           "/video2aeo:episode passes [\"youtube\"], /video2aeo:wp-article [\"wordpress\"]."}
-DIR = {"type": "string", "description": "Absolute path of the episode folder, e.g. …/episodes/2026-01-show-12-episode-slug"}
+DIR = {"type": "string", "description": "Absolute path of the episode folder as returned by episode_path: <episodes root>/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>"}
 TOOLS = [
     {"name": "setup_status",
      "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
@@ -43,7 +43,24 @@ TOOLS = [
          "glossary": {"type": "object"},
          "guidelines_md": {"type": "string", "description": "Full text of guidelines.md: existing house rules plus the 'Switched-off guidelines' section"},
          "guidelines_off": {"type": "array", "items": {"type": "string"},
-                            "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"}}}},
+                            "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"},
+         "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>); saved in config.json. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."}}}},
+    {"name": "workspace_status",
+     "description": "Is the folder this session runs in a good place for episode files? Call right after setup_status in /video2aeo:episode and "
+                    "/video2aeo:wp-article, passing the session folder (run `pwd`). Returns ok, status (ok | inside_episode | suspicious | unknown | "
+                    "no_root), the saved episodes_root, episode_dir when the session is inside an episode, reason and next_step. "
+                    "When ok is false STOP before reading the transcript and tell the user what next_step says.",
+     "inputSchema": {"type": "object", "properties": {"cwd": {"type": "string", "description": "The session's working folder (output of `pwd`); defaults to the server's own folder"}}}},
+    {"name": "episode_path",
+     "description": "Build and create the episode folder (with work/) inside the episodes root: <root>/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>. "
+                    "Always use its result as episode_dir – never invent the path. Without `number` an existing folder with the same slug is "
+                    "reused, otherwise the next free number of the series is taken.",
+     "inputSchema": {"type": "object", "properties": {
+         "slug": {"type": "string", "description": "Short title slug (Latin or Bulgarian; transliterated)"},
+         "format": {"type": "string", "description": "Id of the format profile (setup_status.current.formats); omit for the base format (folder _other)"},
+         "upload_date": {"type": "string", "description": "Video upload date (YYYYMMDD or YYYY-MM-DD); defaults to today"},
+         "number": {"type": "integer", "description": "Episode number in the series; omit to take the next free one"}},
+         "required": ["slug"]}},
     {"name": "get_video_info",
      "description": "Get title, channel, thumbnail, upload date, duration and the current description of a YouTube video, plus the "
                     "`coverage` plan (full / balanced / selective) for the knowledge map derived from the duration and the episode's format profile.",
@@ -75,7 +92,13 @@ TOOLS = [
 
 
 GATED = {"get_video_info", "fetch_transcript", "import_transcript", "render_package", "validate_package",
-         "wp_push_draft"}
+         "wp_push_draft", "episode_path"}
+# Tools that write into an episode folder: it must sit in the episodes-root layout (or be an existing episode).
+GUARDED = {"fetch_transcript", "import_transcript", "render_package", "validate_package", "wp_push_draft"}
+for _tool in TOOLS:
+    if _tool["name"] in GUARDED:
+        _tool["inputSchema"]["properties"]["allow_outside_root"] = {
+            "type": "boolean", "description": "Only after the user explicitly confirmed an episode folder outside the episodes root"}
 
 
 def _brand():
@@ -88,11 +111,20 @@ def call(name, args):
     if name == "check_environment":
         return L.check_environment()
     if name == "save_setup":
-        return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"))
+        return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"),
+                            args.get("episodes_root"))
+    if name == "workspace_status":
+        return L.classify_workspace(args.get("cwd") or None)
     if name in GATED:
         blocked = L.require_setup()
         if blocked:
             return blocked
+    if name in GUARDED:
+        wrong = L.check_episode_dir(args["episode_dir"], bool(args.get("allow_outside_root")))
+        if wrong:
+            return wrong
+    if name == "episode_path":
+        return L.episode_path(_brand(), args.get("format") or None, args.get("upload_date"), args["slug"], args.get("number"))
     if name == "get_video_info":
         info = N.video_info(args["url"])
         if isinstance(info, dict) and info.get("duration_seconds"):
@@ -134,7 +166,7 @@ def handle(msg):
             err = isinstance(out, dict) and out.get("ok") is False
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "content": [{"type": "text", "text": json.dumps(out, ensure_ascii=False, indent=2)}],
-                "isError": bool(err and p["name"] != "validate_package")}}
+                "isError": bool(err and p["name"] not in ("validate_package", "workspace_status"))}}
         except Exception as ex:  # noqa: BLE001
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "content": [{"type": "text", "text": f"{type(ex).__name__}: {ex}\n{traceback.format_exc()[-800:]}"}],
@@ -147,6 +179,9 @@ def handle(msg):
 
 
 def main():
+    # MCP speaks UTF-8; Windows defaults to a legacy code page and would crash on the first Cyrillic character.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace" if stream is sys.stdin else "strict", newline="\n" if stream is sys.stdout else None)
     for line in sys.stdin:
         line = line.strip()
         if not line:
