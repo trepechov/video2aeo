@@ -8,7 +8,7 @@ Deterministic parts of the pipeline – the LLM never does these:
   * validation (YouTube limits, chapter rules, Gutenberg block balance, FAQ parity, placeholders)
 
 Episode folder layout: the paste-ready outputs sit in the folder itself, everything else (episode.json, transcripts,
-schema, review sheet, push state) lives in its `work/` subfolder. Older flat folders are still read.
+schema, review sheet, push state) lives in its `work/` subfolder.
 
 Used by scripts/aeo.py (CLI) and server/server.py (local MCP tools).
 """
@@ -16,10 +16,8 @@ from __future__ import annotations
 
 import datetime
 import html
-import importlib.util
 import json
 import os
-import platform
 import re
 import shutil
 import sys
@@ -28,26 +26,9 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # Per-user brand, glossary and credentials – never in the plugin. VIDEO2AEO_HOME overrides it (used by the example checks).
-# Legacy: before 0.4.0 the plugin was called yt-aeo. Its settings folder is copied to the new one once (the old folder
-# is left untouched as a backup) and the new folder is used from then on; YT_AEO_HOME is still honoured.
-MIGRATED_FROM = ""
-
-
 def _user_dir() -> Path:
-    global MIGRATED_FROM
-    env = os.environ.get("VIDEO2AEO_HOME") or os.environ.get("YT_AEO_HOME")
-    if env:
-        return Path(env).expanduser()
-    new, old = Path.home() / ".video2aeo", Path.home() / ".yt-aeo"
-    if old.is_dir() and not new.exists():
-        try:
-            shutil.copytree(old, new)  # copy2 keeps file modes, so credentials stay private
-            os.chmod(new, 0o700)
-            MIGRATED_FROM = str(old)
-        except OSError:
-            shutil.rmtree(new, ignore_errors=True)  # we created it; never leave a half copy that would win next time
-            return old
-    return new
+    env = os.environ.get("VIDEO2AEO_HOME")
+    return Path(env).expanduser() if env else Path.home() / ".video2aeo"
 
 
 USER_DIR = _user_dir()
@@ -86,16 +67,8 @@ def work_file(ep_dir: Path, name: str) -> Path:
     return d / name
 
 
-def find_work_file(ep_dir: Path, name: str) -> Path:
-    """Where to read a working file: work/ first, then the episode folder itself (older flat layout)."""
-    for base in (work_dir(ep_dir), Path(ep_dir)):
-        if (base / name).exists():
-            return base / name
-    return work_dir(ep_dir) / name
-
-
 def load_episode(ep_dir: Path) -> dict:
-    return load_json(find_work_file(ep_dir, "episode.json"))
+    return load_json(work_dir(ep_dir) / "episode.json")
 
 
 def load_brand(override: Path | None = None) -> dict:
@@ -108,6 +81,7 @@ def load_brand(override: Path | None = None) -> dict:
 
 
 SETUP_FILE = "setup.json"
+GUIDELINE_FILE_RE = re.compile(r"^[^\W_][\w .-]*\.md\Z")  # a brand guideline file in guidelines/ (any letters, no separators)
 # Placeholders the user must fill; optional ones are blanked by save_setup when skipped.
 REQUIRED_FIELDS = (("channel",), ("topics",))
 OPTIONAL_FIELDS = (("organization", "name"), ("organization", "logo"), ("description", "schedule"),
@@ -331,12 +305,19 @@ def _is_suspicious(cwd: Path, temp: bool = True) -> str:
     return ""
 
 
+def native_path(p: str) -> str:
+    """A path as typed by a shell, for this OS: on Windows Git Bash's /c/Users/... becomes C:\\Users\\..."""
+    p = str(p or "").strip().strip('"')
+    m = re.match(r"^/([A-Za-z])(/.*)?$", p) if os.name == "nt" else None
+    return f"{m.group(1).upper()}:" + (m.group(2) or "/").replace("/", "\\") if m else p
+
+
 def classify_workspace(cwd=None) -> dict:
     """Is the session folder a good place to work on an episode?
     status: ok (in or around the episodes root) | inside_episode (resume) | suspicious | unknown | no_root.
     `ok` is true only for ok and inside_episode; for the others the skill must stop and tell the user."""
     root = episodes_root()
-    c = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+    c = Path(native_path(cwd)).expanduser().resolve() if cwd else Path.cwd().resolve()
     brand = load_brand()
     out = {"ok": False, "cwd": str(c), "episodes_root": str(root) if root else "", "episode_dir": "",
            "series_folders": sorted(set(series_folders(brand).values()) | {OTHER_SERIES})}
@@ -354,8 +335,8 @@ def classify_workspace(cwd=None) -> dict:
         return {**out, "ok": True, "status": "ok", "reason": "The session folder is the episodes folder (or around it).",
                 "next_step": ""}
     why = _is_suspicious(c)
-    nxt = (f"Reopen the task with the episodes folder selected: {root} (in Cowork choose it as the working folder "
-           f"when starting the task; in Claude Code start in it).")
+    nxt = (f"Reopen the task with the episodes folder selected: {root} (in the desktop app's Code mode choose it as the "
+           f"working folder of a new environment; in the Claude Code CLI start in it).")
     if why:
         return {**out, "status": "suspicious", "reason": f"The session folder {c} looks accidental: {why}.", "next_step": nxt}
     return {**out, "status": "unknown", "reason": f"The session folder {c} is not the saved episodes folder {root}.",
@@ -456,6 +437,14 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
+def user_dir_writable() -> bool:
+    """Can the settings folder be written? Checks the folder or its nearest existing parent, without creating it."""
+    probe = USER_DIR
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return os.access(probe, os.W_OK)
+
+
 def setup_status() -> dict:
     """Has the one-time brand setup been done? Used by every user-facing skill as its preflight check.
     Never raises on a damaged file – it reports it under `unreadable` so setup can repair it."""
@@ -487,7 +476,6 @@ def setup_status() -> dict:
         warnings.append("site.base_url is still example.com – article links in the description will point there.")
     if d.get("promo_position", "end") not in PROMO_POSITIONS:
         warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
-    legacy_footer = "{PROMO}" not in d.get("footer", "") and "{{PROMO_BLOCK}}" not in d.get("footer", "")
     done = bool(info.get("completed"))
     try:
         gl = load_json(USER_DIR / "glossary.json") if (USER_DIR / "glossary.json").exists() else {}
@@ -501,12 +489,11 @@ def setup_status() -> dict:
         "configured": done and not missing and not unreadable,
         "setup_completed": done,
         "user_dir": str(USER_DIR),
-        "migrated_from": MIGRATED_FROM,
+        "user_dir_writable": user_dir_writable(),
         "missing": missing,
         "required_missing": required_missing,
         "unreadable": unreadable,
         "warnings": warnings,
-        "legacy_footer": legacy_footer,
         "glossary_entries": glossary_entries,
         "current": {
             "language": brand.get("language", "bg"),
@@ -533,61 +520,11 @@ def setup_status() -> dict:
     }
 
 
-SUBTITLE_PACKAGES = {"youtube_transcript_api": "youtube-transcript-api", "yt_dlp": "yt-dlp"}
-
-
-def pip_install_args(packages: list) -> list:
-    """pip arguments for the interpreter running this helper (the one the plugin really uses).
-    `--user` outside a virtualenv so no admin rights are needed; inside one it would be refused."""
-    in_venv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
-    return [sys.executable, "-m", "pip", "install", "--upgrade", *([] if in_venv else ["--user"]), *packages]
-
-
-def pip_install_command(packages: list) -> str:
-    """The same command as a copy-paste line for the manual fallback (quoted path, PowerShell and sh)."""
-    a = pip_install_args(packages)
-    return f'"{a[0]}" ' + " ".join(a[1:])
-
-
-def check_environment() -> dict:
-    """What the plugin needs on this computer. Runs inside the interpreter that the desktop app launches.
-    Read-only: checks that the settings folder (or its nearest existing parent) is writable without creating it."""
-    py_ok = sys.version_info >= (3, 9)
-    probe = USER_DIR
-    while not probe.exists() and probe != probe.parent:
-        probe = probe.parent
-    writable = os.access(probe, os.W_OK)
-    optional = {
-        "youtube_transcript_api": "automatic subtitle download",
-        "yt_dlp": "subtitle download, second route",
-    }
-    optional_status = {m: importlib.util.find_spec(m) is not None for m in optional}
-    missing = [pkg for mod, pkg in SUBTITLE_PACKAGES.items() if not optional_status.get(mod)]
-    problems = []
-    if not py_ok:
-        problems.append(f"Python {platform.python_version()} is too old – 3.9 or newer is needed.")
-    if not writable:
-        problems.append(f"The folder {USER_DIR} cannot be written – brand settings cannot be saved.")
-    return {
-        "ok": not problems,
-        "problems": problems,
-        "python": {"version": platform.python_version(), "executable": sys.executable, "ok": py_ok},
-        "platform": f"{platform.system()} {platform.release()}",
-        "user_dir": str(USER_DIR),
-        "user_dir_writable": writable,
-        "optional": {m: {"installed": optional_status[m], "enables": optional[m]} for m in optional},
-        "automatic_subtitles": any(optional_status.values()),
-        # Packages the subtitle download still lacks; the `install_subtitle_tools` tool installs them for the user.
-        "missing_subtitle_tools": missing,
-        "install_command": pip_install_command(missing) if missing else "",
-    }
-
-
-def _expand_dotted(d: dict) -> dict:
+def expand_dotted(d: dict) -> dict:
     """{"description.promo": x} -> {"description": {"promo": x}} (agents often send dotted keys)."""
     out: dict = {}
     for k, v in d.items():
-        v = _expand_dotted(v) if isinstance(v, dict) else v
+        v = expand_dotted(v) if isinstance(v, dict) else v
         path = tuple(k.split("."))
         cur = _get(out, path)
         _set(out, path, _deep_merge(cur, v) if isinstance(cur, dict) and isinstance(v, dict) else v)
@@ -596,11 +533,24 @@ def _expand_dotted(d: dict) -> dict:
 
 def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelines_md: str | None = None,
                guidelines_off: list | None = None, episodes_root: str | None = None,
-               models: dict | None = None) -> dict:
+               models: dict | None = None, guidelines_files: dict | None = None, replace: bool = False) -> dict:
     """Write the user's brand files to USER_DIR (fixed file names only).
     brand/glossary are merged over any existing file; omitted arguments keep what is saved.
-    Skipped optional fields are saved as empty text. Everything is validated before anything is written."""
+    replace=True (importing a colleague's setup) writes every team item exactly as given and clears the ones not given
+    – brand, glossary, guidelines.md, guidelines/*.md, guidelines_off, models – after copying the current files into a
+    backup-<timestamp>/ folder. Skipped optional fields are saved as empty text. Everything is validated before
+    anything is written."""
     errors = []
+    if replace and not isinstance(brand, dict):
+        errors.append("replace needs the full brand.")
+    if guidelines_files is not None:
+        if not isinstance(guidelines_files, dict):
+            errors.append("guidelines_files must be an object: file name -> text.")
+        else:
+            bad = sorted(n for n, v in guidelines_files.items()
+                         if not GUIDELINE_FILE_RE.match(str(n)) or not isinstance(v, str))
+            if bad:
+                errors.append(f"guidelines_files: invalid names or non-text content {bad}; names are like 'youtube-description.md'.")
     if brand is not None and not isinstance(brand, dict):
         errors.append("brand must be an object.")
     if glossary is not None and not isinstance(glossary, dict):
@@ -619,7 +569,7 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         if not isinstance(episodes_root, str) or not episodes_root.strip():
             errors.append("episodes_root must be the absolute path of a folder.")
         else:
-            root_path = Path(episodes_root.strip()).expanduser()
+            root_path = Path(native_path(episodes_root)).expanduser()
             if not root_path.is_absolute():
                 errors.append("episodes_root must be an absolute path.")
             elif not root_path.is_dir():
@@ -631,9 +581,9 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
     if models is not None:
         errors += _models_errors(models, load_json(PLUGIN_ROOT / "config" / "models.json"))
     if (brand is None and glossary is None and guidelines_md is None and guidelines_off is None
-            and episodes_root is None and models is None):
+            and episodes_root is None and models is None and guidelines_files is None):
         errors.append("Nothing to save.")
-    brand = _expand_dotted(brand) if isinstance(brand, dict) else brand
+    brand = expand_dotted(brand) if isinstance(brand, dict) else brand
     pos = _get(brand or {}, ("description", "promo_position"))
     if pos is not None and pos not in PROMO_POSITIONS:
         errors.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
@@ -654,7 +604,8 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                                            or folder == OTHER_SERIES):
                     errors.append(f"formats.{pid}.folder must be a short Latin slug (a-z, 0-9, '-'), got {folder!r}.")
             try:
-                known = load_json(USER_DIR / "brand.json").get("formats") or {} if (USER_DIR / "brand.json").exists() else {}
+                known = ({} if replace else load_json(USER_DIR / "brand.json").get("formats") or {}
+                         if (USER_DIR / "brand.json").exists() else {})
             except (OSError, ValueError, AttributeError):
                 known = {}
             used: dict = {}
@@ -686,9 +637,9 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
     old_marker = read_or_set_aside(marker_path)
     for name, data in (("brand.json", brand), ("glossary.json", glossary)):
         path = USER_DIR / name
-        if data is None and not (name == "brand.json" and path.exists()):
+        if data is None and not replace and not (name == "brand.json" and path.exists()):
             continue
-        merged = _deep_merge(read_or_set_aside(path), data or {})
+        merged = _deep_merge({} if replace else read_or_set_aside(path), data or {})
         if name == "brand.json":
             full = _deep_merge(load_json(PLUGIN_ROOT / "config" / "brand.json"), merged)
             for p in OPTIONAL_FIELDS:
@@ -703,6 +654,8 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         cfg["episodes_root"] = str(root_path)
         writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
 
+    if replace and models is None:
+        models = {}
     if models is not None:  # replaces the saved section; {} goes back to the plugin defaults
         cfg_path = USER_DIR / "config.json"
         cfg = read_or_set_aside(cfg_path) if cfg_path not in writes else json.loads(writes[cfg_path])
@@ -712,29 +665,79 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
             cfg.pop("models", None)
         writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
 
-    if guidelines_md is not None:
+    deletes: list = []
+    if guidelines_md is not None and (guidelines_md.strip() or not replace):
         writes[USER_DIR / "guidelines.md"] = guidelines_md.rstrip() + "\n"
+    elif replace:
+        deletes.append(USER_DIR / "guidelines.md")
+    gdir = USER_DIR / "guidelines"
+    for name, text in (guidelines_files or {}).items():
+        writes[gdir / name] = text.rstrip() + "\n"
+    if replace:
+        deletes += [f for f in gdir.glob("*.md") if f.name not in (guidelines_files or {})] if gdir.is_dir() else []
+        guidelines_off = guidelines_off or []
     off = sorted(set(guidelines_off)) if guidelines_off is not None else old_marker.get("guidelines_off", [])
     writes[marker_path] = json.dumps({"completed": datetime.date.today().isoformat(), "guidelines_off": off},
                                      ensure_ascii=False, indent=2) + "\n"
+    backup = None
     try:
         USER_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        backup = _backup_team_files() if replace else None
+        if replace:  # until the new marker is written last, a half-finished import must not count as configured
+            marker_path.unlink(missing_ok=True)
         for path in broken:
             os.replace(path, path.with_name(path.name + ".broken"))
         g = USER_DIR / "guidelines.md"
-        if g in writes and g.exists() and g.read_text(encoding="utf-8") != writes[g]:
+        if not replace and g in writes and g.exists() and g.read_text(encoding="utf-8") != writes[g]:
             _write_atomic(USER_DIR / "guidelines.md.bak", g.read_text(encoding="utf-8"))
         for path, text in writes.items():  # setup.json last: a failure never marks setup as done
             if path != marker_path:
+                path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 _write_atomic(path, text)
+        for path in deletes:
+            path.unlink(missing_ok=True)
         _write_atomic(marker_path, writes[marker_path])
     except OSError as ex:
-        return {"ok": False, "errors": [f"Could not write to {USER_DIR}: {ex}"], **setup_status()}
-    extra = _unrecognised_keys(brand, load_json(PLUGIN_ROOT / "config" / "brand.json")) if isinstance(brand, dict) else []
-    return {"ok": True, "set_aside": [p.name + ".broken" for p in broken], "unrecognised_keys": extra, **setup_status()}
+        errors = [f"Could not write to {USER_DIR}: {ex}"]
+        if backup:
+            errors.append(f"The previous settings are kept in {backup}; import that folder to restore them.")
+        return {"ok": False, "errors": errors, **({"backup": str(backup)} if backup else {}), **setup_status()}
+    extra = unrecognised_keys(brand, load_json(PLUGIN_ROOT / "config" / "brand.json")) if isinstance(brand, dict) else []
+    out = {"ok": True, "set_aside": [p.name + ".broken" for p in broken], "unrecognised_keys": extra}
+    if backup:
+        out["backup"] = str(backup)
+    return {**out, **setup_status()}
 
 
-def _unrecognised_keys(data: dict, defaults: dict, prefix: str = "") -> list:
+TEAM_FILES = ("brand.json", "glossary.json", "guidelines.md", SETUP_FILE)
+
+
+def _backup_team_files() -> Path | None:
+    """Copy the team files into a new backup-<timestamp>/ folder of USER_DIR before a replace, plus the `models` of
+    config.json (which a replace changes) – never its sign-in details. Never overwrites an earlier backup. None when
+    there is nothing to keep."""
+    present = [USER_DIR / n for n in TEAM_FILES if (USER_DIR / n).is_file()]
+    models = load_config().get("models")
+    gdir = USER_DIR / "guidelines"
+    guides = sorted(gdir.glob("*.md")) if gdir.is_dir() else []
+    if not present and not guides and not models:
+        return None
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest, n = USER_DIR / f"backup-{stamp}", 1
+    while dest.exists():
+        n += 1
+        dest = USER_DIR / f"backup-{stamp}-{n}"
+    (dest / "guidelines").mkdir(mode=0o700, parents=True) if guides else dest.mkdir(mode=0o700)
+    for f in present:
+        shutil.copy2(f, dest / f.name)
+    for f in guides:
+        shutil.copy2(f, dest / "guidelines" / f.name)
+    if models:
+        _write_atomic(dest / "config.json", json.dumps({"models": models}, ensure_ascii=False, indent=2) + "\n")
+    return dest
+
+
+def unrecognised_keys(data: dict, defaults: dict, prefix: str = "") -> list:
     """Dotted paths in `data` that the generic brand.json does not know. Saved all the same (extra notes are harmless);
     format profiles (brand.formats.<id>) are an open map and are checked elsewhere."""
     out = []
@@ -743,59 +746,8 @@ def _unrecognised_keys(data: dict, defaults: dict, prefix: str = "") -> list:
         if k not in defaults:
             out.append(path)
         elif isinstance(v, dict) and isinstance(defaults[k], dict) and path != "formats":
-            out += _unrecognised_keys(v, defaults[k], path + ".")
+            out += unrecognised_keys(v, defaults[k], path + ".")
     return sorted(out)
-
-
-SETUP_BUNDLE_FILES = ("brand.json", "glossary.json", "guidelines.md")
-SETUP_BUNDLE_MAX = 2_000_000  # bytes per file
-
-
-def read_setup_bundle(path: str) -> dict:
-    """Read an earlier install's brand.json, glossary.json and guidelines.md from a folder or a .zip so the setup skill
-    can offer them for review and pass them to save_setup. Read-only; only these three file names are looked at."""
-    import zipfile
-    src = Path(str(path or "").strip().strip('"')).expanduser()
-    if not src.exists():
-        return {"ok": False, "errors": [f"{src} does not exist."]}
-    found: dict = {}
-    try:
-        if src.is_dir():
-            for name in SETUP_BUNDLE_FILES:
-                for cand in (src / name, src / ".video2aeo" / name):
-                    if cand.is_file():
-                        if cand.stat().st_size > SETUP_BUNDLE_MAX:
-                            return {"ok": False, "errors": [f"{cand.name} is too large."]}
-                        found[name] = cand.read_text(encoding="utf-8")
-                        break
-        elif zipfile.is_zipfile(src):
-            with zipfile.ZipFile(src) as z:
-                for info in z.infolist():
-                    base = info.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                    if base in SETUP_BUNDLE_FILES and base not in found and not info.is_dir():
-                        if info.file_size > SETUP_BUNDLE_MAX:
-                            return {"ok": False, "errors": [f"{base} is too large."]}
-                        found[base] = z.read(info).decode("utf-8")
-        else:
-            return {"ok": False, "errors": [f"{src} is neither a folder nor a .zip file."]}
-        out: dict = {"ok": True, "source": str(src), "found": sorted(found)}
-        for name in ("brand.json", "glossary.json"):
-            if name in found:
-                data = json.loads(found[name])
-                if not isinstance(data, dict):
-                    return {"ok": False, "errors": [f"{name} must hold a JSON object."]}
-                out[name[:-5]] = data
-        if "guidelines.md" in found:
-            out["guidelines_md"] = found["guidelines.md"]
-        if "brand" in out:
-            out["unrecognised_keys"] = _unrecognised_keys(_expand_dotted(out["brand"]),
-                                                         load_json(PLUGIN_ROOT / "config" / "brand.json"))
-        if not found:
-            out["ok"] = False
-            out["errors"] = [f"None of {', '.join(SETUP_BUNDLE_FILES)} found in {src}."]
-        return out
-    except (OSError, ValueError, UnicodeDecodeError, zipfile.BadZipFile) as ex:
-        return {"ok": False, "errors": [f"Could not read {src}: {ex}"]}
 
 
 def _deep_merge(a: dict, b: dict) -> dict:
@@ -989,7 +941,7 @@ def _promo_and_footer(d: dict) -> tuple[str, str]:
     """Return (top_block, footer). Fills the footer's {SCHEDULE}/{DISCLAIMER_URL}/{SOCIAL_LINKS} tokens (a line whose
     value is empty is dropped) and places the promo (links, messages, ads) at {PROMO}, above the footer, or at the top."""
     lines = []
-    for line in d["footer"].rstrip().replace("{{PROMO_BLOCK}}", "{PROMO}").split("\n"):
+    for line in d["footer"].rstrip().split("\n"):
         for token, key in FOOTER_FIELDS.items():
             pattern = r"(?<!\{)" + re.escape(token) + r"(?!\})"  # not inside a literal {{…}} placeholder
             if line is not None and re.search(pattern, line):
@@ -1002,7 +954,7 @@ def _promo_and_footer(d: dict) -> tuple[str, str]:
     if promo and d.get("promo_position") != "top":
         if "{PROMO}" in footer:
             return "", footer.replace("{PROMO}", promo)
-        if promo in footer:  # older footer that already carries the promo text
+        if promo in footer:  # the user's footer already carries the promo text
             return "", footer
         return "", f"{promo}\n{DESC_SEP}\n{footer}"
     footer = re.sub(r"(_{10,}\n)\s*(?=_{10,})", "", footer.replace("{PROMO}", "")).strip()
@@ -1299,7 +1251,7 @@ def article_variant(ep: dict, variant: str, ep_dir: Path | None = None) -> dict:
         return ep
     over = dict(ep["article"].get(variant) or {})
     if ep_dir is not None:
-        f = find_work_file(ep_dir, f"article.{variant}.json")
+        f = work_dir(ep_dir) / f"article.{variant}.json"
         if f.exists():
             over.update(load_json(f))
     art = {**ep["article"], **over}
@@ -1337,7 +1289,7 @@ def render_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None, 
                 return {"ok": False, "errors": [f"Unknown article variant '{article}'; use {list(ARTICLE_VARIANT_FILES)}."]}
             art_file, fields_file, schema_file = ARTICLE_VARIANT_FILES[article]
             ep = article_variant(ep, article, ep_dir)
-            tr_path = find_work_file(ep_dir, ep.get("transcript_file") or "transcript.edited.md")
+            tr_path = work_dir(ep_dir) / (ep.get("transcript_file") or "transcript.edited.md")
             transcript_md = tr_path.read_text(encoding="utf-8") if tr_path.exists() else None
             schema = render_schema(ep, brand)
             work_file(ep_dir, schema_file).write_text(
@@ -1484,7 +1436,7 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
                 errors.append("Empty heading in article.")
         else:
             errors.append("article.wp.html not rendered yet.")
-        s_path = find_work_file(ep_dir, "schema.jsonld")
+        s_path = work_dir(ep_dir) / "schema.jsonld"
         if s_path.exists():
             try:
                 schema = json.loads(s_path.read_text(encoding="utf-8"))
@@ -1502,7 +1454,7 @@ def validate_package(ep_dir: Path, brand: dict, outputs: list[str] | None = None
     # numbers must be traceable to the transcript or claims
     corpus = ""
     for f in ("transcript.raw.txt", "transcript.edited.md"):
-        path = find_work_file(ep_dir, f)
+        path = work_dir(ep_dir) / f
         if path.exists():
             corpus += path.read_text(encoding="utf-8")
     corpus += " ".join(c.get("text", "") + " " + c.get("note", "") for c in ep.get("claims", []))

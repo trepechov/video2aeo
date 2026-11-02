@@ -170,7 +170,7 @@ def split_transcript(ep_dir, minutes=None, force: bool = False) -> dict:
     return the existing split; a changed transcript or `minutes` re-splits but keeps every edited chunk whose raw text
     is unchanged. `minutes` omitted: one chunk for episodes shorter than SINGLE_CALL_UNDER_MINUTES, else 10-minute chunks."""
     ep_dir = Path(ep_dir)
-    raw_path = L.find_work_file(ep_dir, "transcript.raw.txt")
+    raw_path = L.work_dir(ep_dir) / "transcript.raw.txt"
     if not raw_path.exists():
         return {"ok": False, "error": "work/transcript.raw.txt is missing – import or fetch the transcript first."}
     raw = raw_path.read_text(encoding="utf-8")
@@ -243,7 +243,7 @@ def merge_transcript(ep_dir) -> dict:
     index = _load_index(ep_dir)
     if not index:
         return {"ok": False, "error": "No chunks – run split_transcript first."}
-    raw_path = L.find_work_file(ep_dir, "transcript.raw.txt")
+    raw_path = L.work_dir(ep_dir) / "transcript.raw.txt"
     if raw_path.exists() and _sha(raw_path.read_text(encoding="utf-8")) != index["raw_sha"]:
         return {"ok": False, "error": "The raw transcript changed after it was split – run split_transcript again "
                                       "(finished chunks with unchanged text are kept)."}
@@ -302,11 +302,11 @@ def _ranges(nums: list) -> str:
 
 def _edit_step(ep_dir: Path, raw_exists: bool) -> dict:
     """State of the transcript-editing step, with the chunk detail."""
-    edited = L.find_work_file(ep_dir, "transcript.edited.md")
+    edited = L.work_dir(ep_dir) / "transcript.edited.md"
     index = _load_index(ep_dir)
-    raw_path = L.find_work_file(ep_dir, "transcript.raw.txt")
+    raw_path = L.work_dir(ep_dir) / "transcript.raw.txt"
     if not index:
-        if edited.exists():  # whole-file edit (older episodes or short ones done in one call)
+        if edited.exists():  # whole-file edit (short ones done in one call)
             return {"done": True, "detail": "transcript.edited.md exists", "chunks": None}
         return {"done": False, "detail": "not split yet", "chunks": None,
                 "next": "split_transcript, then edit each chunk" if raw_exists else ""}
@@ -334,10 +334,10 @@ def episode_status(ep_dir) -> dict:
     if not ep_dir.is_dir():
         return {"ok": False, "error": f"{ep_dir} is not a folder."}
     prog = load_progress(ep_dir)
-    raw_path = L.find_work_file(ep_dir, "transcript.raw.txt")
+    raw_path = L.work_dir(ep_dir) / "transcript.raw.txt"
     raw_exists = raw_path.exists() and raw_path.stat().st_size > 0
     ep, ep_problem = {}, ""
-    ep_file = L.find_work_file(ep_dir, "episode.json")
+    ep_file = L.work_dir(ep_dir) / "episode.json"
     if ep_file.exists():
         try:
             ep = L.load_json(ep_file)
@@ -364,7 +364,7 @@ def episode_status(ep_dir) -> dict:
     rendered = (ep_dir / L.OUTPUT_FILES["youtube"]).exists() and (wd / "review.md").exists()
 
     steps = [
-        {"id": "transcript", "done": raw_exists or L.find_work_file(ep_dir, "transcript.edited.md").exists(),
+        {"id": "transcript", "done": raw_exists or (L.work_dir(ep_dir) / "transcript.edited.md").exists(),
          "detail": "work/transcript.raw.txt",
          "next": "import_transcript(file) or fetch_transcript(url)"},
         {"id": "edit_transcript", **edit},

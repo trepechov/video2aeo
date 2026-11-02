@@ -1,6 +1,6 @@
 #!/bin/sh
-# SessionStart check: is a usable Python available, and did its location change since the last session?
-# Needs no Python itself, is read-only apart from one small note file, and ALWAYS exits 0 so it can never block a session.
+# SessionStart check: is a usable Python available, and (Windows) can the Claude app find `sh` to start the helper?
+# Needs no Python itself, writes nothing, and ALWAYS exits 0 so it can never block a session.
 self=$(printf '%s' "$0" | tr '\\' '/')
 here=$(cd "$(dirname "$self")/../server" && pwd) || exit 0
 . "$here/find-python.sh" || exit 0
@@ -16,25 +16,22 @@ fi
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*)
     ps1=$(cygpath -w "$here/path-check.ps1" 2>/dev/null) || ps1=""
+    sh_dir=$(cygpath -w "$(dirname "$(command -v sh)")" 2>/dev/null) || sh_dir=""
+    set --
+    [ -n "$sh_dir" ] && set -- -ShFolder "$sh_dir"   # the running sh: finds Git in any folder (Scoop, portable)
     if [ -n "$ps1" ] && command -v powershell.exe >/dev/null 2>&1; then
-      state=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1" 2>/dev/null | tr -d '\r')
+      state=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1" "$@" 2>/dev/null | tr -d '\r')
       case "$state" in
-        found:*|git-missing)
+        found:*)
           echo "video2aeo: dependency check FAILED. The Windows PATH of the Claude app has no 'sh' (from Git for Windows), so the video2aeo helper cannot start."
-          echo "Tell the user in plain words and run /video2aeo:doctor, which can fix it in one step. Restart of the Claude app is needed afterwards."
+          echo "Tell the user in plain words and run /video2aeo:doctor, which adds the folder below with the user's OK. Restart of the Claude app is needed afterwards."
+          printf 'video2aeo-path-fix: %s\n' "${state#found:}"   # printf: echo may eat the backslashes of C:\...
+          exit 0;;
+        git-missing)
+          echo "video2aeo: dependency check FAILED. Git for Windows (it provides 'sh') was not found, so the video2aeo helper cannot start."
+          echo "Tell the user in plain words and run /video2aeo:doctor for the install steps."
           exit 0;;
       esac
     fi;;
 esac
-
-exe=$($PY_CMD -c 'import sys; print(sys.executable)' 2>/dev/null)
-home=${VIDEO2AEO_HOME:-$HOME/.video2aeo}
-note="$home/last_python"
-if [ -d "$home" ]; then
-  last=$(cat "$note" 2>/dev/null)
-  if [ -n "$last" ] && [ "$last" != "$exe" ]; then
-    echo "video2aeo: the Python in use changed (was $last, now $exe). If the video2aeo tools fail, run /video2aeo:doctor."
-  fi
-  printf '%s\n' "$exe" > "$note" 2>/dev/null
-fi
 exit 0

@@ -1,7 +1,7 @@
 ---
 title: "fix: Smooth Windows install, Python launcher, per-session dependency check"
 type: fix
-status: active  # 0.8.0: units 1-8 implemented, Windows retest pending
+status: active  # 0.8.0: units 1-8 implemented; follow-up cleanup in 2026-11-02-002; Windows retest pending
 date: 2026-11-02
 target_version: 0.8.0
 ---
@@ -108,6 +108,9 @@ Likely causes to confirm on the user's machine: Python installed per user and PA
 restart/update; Store `python.exe` alias taking precedence; Python upgraded/uninstalled. Mitigation: the launcher
 re-detects on every start (no cached path); the SessionStart check shows which interpreter was found. Optionally store
 `last_python` in `~/.video2aeo/` and warn when it changes. Needs the user's reproduction details (Open question 3).
+**Update (2 Nov 2026, review):** `last_python` was removed again – the hook runs under a different PATH than the helper
+(CLI vs desktop app, doctor via the Bash tool), so it raised false "Python changed" warnings and broke the hook's
+no-writes rule. The helper's own interpreter is shown by `check_environment.python.executable` instead.
 
 ### 6. First-use instruction: Claude Code mode (R5)
 

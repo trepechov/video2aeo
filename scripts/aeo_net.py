@@ -24,6 +24,7 @@ import urllib.request
 from pathlib import Path
 
 import aeo_lib as L
+import aeo_setup as S
 
 UA = {"User-Agent": "Mozilla/5.0 (video2aeo plugin)", "Accept-Language": "bg,en;q=0.8"}
 
@@ -79,25 +80,41 @@ def _yt_cookie_args() -> list:
     return []
 
 
+def _add_user_site() -> None:
+    """A first `pip install --user` creates the user site folder; Python only puts it on sys.path at start-up when it
+    already exists, so add it here or the running helper would not see the new packages until a restart."""
+    import site
+    us = site.getusersitepackages()
+    if site.ENABLE_USER_SITE and os.path.isdir(us) and us not in sys.path:
+        site.addsitedir(us)
+    importlib.invalidate_caches()
+
+
 def install_subtitle_tools() -> dict:
     """pip-install youtube-transcript-api and yt-dlp into the interpreter this helper runs in. Network + disk write:
     the caller must have the user's explicit yes. Never raises; returns what happened and the new environment state."""
-    importlib.invalidate_caches()
-    todo = [pkg for mod, pkg in L.SUBTITLE_PACKAGES.items() if importlib.util.find_spec(mod) is None]
+    _add_user_site()
+    todo = S.missing_subtitle_packages()
     if not todo:
         return {"ok": True, "installed": [], "message": "Both subtitle tools are already installed."}
-    cmd = L.pip_install_args(todo)
+    if S.externally_managed():
+        return {"ok": False, "installed": [], "still_missing": todo, "manual_command": S.pip_install_command(todo),
+                "message": f"This Python ({sys.executable}) does not allow pip installs. Install yt-dlp with the "
+                           "command below instead; the next fetch_transcript call finds it."}
+    cmd = S.pip_install_args(todo)
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # stdin closed: the helper's stdin is the MCP channel. cwd outside the episode folder: `-m` imports from cwd.
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL,
+                             cwd=tempfile.gettempdir())
         ok, tail = res.returncode == 0, (res.stdout + res.stderr).strip()[-600:]
     except (OSError, subprocess.SubprocessError) as ex:
         ok, tail = False, f"{type(ex).__name__}: {ex}"
-    importlib.invalidate_caches()
-    still = [pkg for mod, pkg in L.SUBTITLE_PACKAGES.items() if importlib.util.find_spec(mod) is None]
+    _add_user_site()
+    still = S.missing_subtitle_packages()
     out = {"ok": ok and not still, "installed": [p for p in todo if p not in still], "still_missing": still,
            "log_tail": tail}
     if still:
-        out["manual_command"] = L.pip_install_command(still)
+        out["manual_command"] = S.pip_install_command(still)
     else:
         out["message"] = "Installed. The next fetch_transcript call uses them; no restart is needed."
     return out
@@ -105,10 +122,13 @@ def install_subtitle_tools() -> dict:
 
 def _ytdlp_cmd() -> list | None:
     """yt-dlp as a command: the module of this very interpreter first (a pip --user install puts the .exe in a Scripts
-    folder that is usually not on PATH on Windows), then a yt-dlp on PATH (e.g. brew)."""
+    folder that is usually not on PATH on Windows), then a yt-dlp on PATH or in the Homebrew folders (the desktop app
+    may start with a PATH that lacks them)."""
+    _add_user_site()
     if importlib.util.find_spec("yt_dlp") is not None:
         return [sys.executable, "-m", "yt_dlp"]
-    exe = shutil.which("yt-dlp")
+    exe = shutil.which("yt-dlp") or next((p for p in ("/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp")
+                                          if os.access(p, os.X_OK)), None)
     return [exe] if exe else None
 
 
@@ -139,12 +159,16 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             cmd = [*ytdlp, *_yt_cookie_args(), "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
                    "--sub-format", "vtt", "-o", os.path.join(tmp, "%(id)s.%(ext)s"), L.watch_url(vid)]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-            vtts = sorted(Path(tmp).glob("*.vtt"))
-            if vtts:
-                segs = L.parse_transcript_text(vtts[0].read_text(encoding="utf-8"))
-                return L.write_raw_transcript(segs, out_dir, f"yt-dlp:{vtts[0].name}")
-            errors.append(f"yt-dlp: {res.stderr.strip()[-300:]}")
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                     timeout=180, stdin=subprocess.DEVNULL, cwd=tmp)
+                vtts = sorted(Path(tmp).glob("*.vtt"))
+                if vtts:
+                    segs = L.parse_transcript_text(vtts[0].read_text(encoding="utf-8"))
+                    return L.write_raw_transcript(segs, out_dir, f"yt-dlp:{vtts[0].name}")
+                errors.append(f"yt-dlp: {res.stderr.strip()[-300:]}")
+            except (OSError, subprocess.SubprocessError) as ex:
+                errors.append(f"yt-dlp: {type(ex).__name__}: {str(ex)[:300]}")
     else:
         missing.append("yt-dlp")
         errors.append("yt-dlp not found")
@@ -158,7 +182,6 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
     if len(missing) == 2:
         # Neither tool is there: the failure is the missing install, not YouTube. The skill offers install_subtitle_tools.
         out["missing_subtitle_tools"] = missing
-        out["can_auto_install"] = True
     return out
 
 # ----------------------------------------------------------------------------
@@ -223,7 +246,7 @@ def wp_create_draft(ep_dir: Path, brand: dict, cfg_path: Path | None = None) -> 
     body = {"title": ep["video"]["title"], "content": (ep_dir / L.OUTPUT_FILES["wordpress"]).read_text(encoding="utf-8"),
             "status": "draft", "slug": art.get("slug"), "excerpt": art.get("meta_description", ""),
             "categories": cat_ids, "tags": tag_ids}
-    state_file = L.find_work_file(ep_dir, "wp-result.json")
+    state_file = L.work_dir(ep_dir) / "wp-result.json"
     post_id = L.load_json(state_file).get("id") if state_file.exists() else None
     if post_id:
         current = _wp(cfg, "GET", f"posts/{post_id}", query={"context": "edit"})

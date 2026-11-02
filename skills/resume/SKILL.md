@@ -6,12 +6,13 @@ description: >
   is already on disk, says where the episode stands and continues with only the remaining steps – never redoing approved
   work and never skipping an approval.
 metadata:
-  version: "0.8.2"
+  version: "0.9.0"
 ---
 
 # /video2aeo:resume – continue an interrupted episode
 
-**STOP – preflight:** call `setup_status`. If `configured` is false, run the `setup` skill first.
+**STOP – preflight:** call `setup_status`. If the tool is missing or fails, follow the `doctor` skill first; if
+`configured` is false, run the `setup` skill first.
 
 Arguments: an optional episode folder (absolute path) and the word `--unattended` (used by automated restarts: nobody
 answers questions).

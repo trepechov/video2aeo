@@ -20,7 +20,7 @@ user's computer in `~/.video2aeo/`, never in this repo. Developers keep brand fi
 | Opening Claude Code in the repo also reads `.mcp.json` as a *project* server, where `${CLAUDE_PLUGIN_ROOT}` is not set – it fails to connect (seen 12 Oct 2026). | Harmless; use the plugin-loaded server (`--plugin-dir .`). |
 | Plugins with a top-level `bin/` folder can't be installed in claude.ai. | Scripts live in `scripts/` and `server/`. |
 | The desktop app doesn't prompt for plugin `userConfig`; servers referencing missing options are ignored. | Brand, glossary, guidelines and credentials live in `~/.video2aeo/`, not in plugin config. |
-| The desktop app launches `.mcp.json` with the GUI PATH; a bare `python3` fails on Windows (python.org installs only `python` and `py`). Since 0.8.0 `sh server/launch.sh` tries `python3`, `python`, `py -3` (Windows: `sh` from Git for Windows; a SessionStart hook and `/video2aeo:doctor` check this). On a Mac with Homebrew, Terminal's `python3` (e.g. 3.14) differs from `/usr/bin/python3` (3.9). | Runtime code must run on Python 3.9 (verified). Optional deps go into the interpreter Desktop uses (`/usr/bin/python3 -m pip install --user …`). |
+| The desktop app launches `.mcp.json` with the GUI PATH; a bare `python3` fails on Windows (python.org installs only `python` and `py`). Since 0.8.0 `sh server/launch.sh` tries `python3`, `python`, `py -3` (Windows: `sh` from Git for Windows; a SessionStart hook and `/video2aeo:doctor` check this). On a Mac with Homebrew, Terminal's `python3` (e.g. 3.14) differs from `/usr/bin/python3` (3.9); without the Command Line Tools `/usr/bin/python3` is only an installer stub, so the launcher skips it and also tries the python.org and Homebrew paths. | Runtime code must run on Python 3.9 (verified). Optional deps go into the interpreter the helper runs on (`install_subtitle_tools`, after the user's yes); a Homebrew/Linux Python refuses pip (PEP 668), so the offer suggests `brew`/`pipx install yt-dlp` there. |
 | YouTube blocks caption fetching from cloud IPs; `youtube-transcript-api` works from home/office IPs. | Automatic download is optional and local-only; the default input is a transcript file. |
 | YouTube chapters: first at 00:00, ≥ 3, ascending, each ≥ 10 s. Description ≤ 5,000 chars, no `<` `>`. | Enforced by code, not by the LLM. |
 | Gutenberg is picky: hand-written block markup often triggers "unexpected content". | Markup is generated deterministically and checked with WordPress's own block validator (`dev/`). |
@@ -86,7 +86,7 @@ Tested on the Mac (12 Oct 2026): fixture render + validate `ok: true` on Python 
 **0 invalid**, embed first; transcript import from the copy-paste format. In the cloud session: rolling auto-caption
 VTT import (dedup), validator negative tests, MCP handshake (raw stdio).
 
-Not yet tested: agents + `video2aeo` MCP server in Desktop Cowork; live `fetch_transcript`; `wp_push_draft`.
+Not yet tested: agents + `video2aeo` MCP server in Desktop Code mode; live `fetch_transcript`; `wp_push_draft`.
 
 ### 3.1 Local dev loop (every change)
 
@@ -95,7 +95,7 @@ Not yet tested: agents + `video2aeo` MCP server in Desktop Cowork; live `fetch_t
   `(cd dev && npm run validate-blocks)`.
 - Claude Desktop: bump `version` in `.claude-plugin/plugin.json` → install the new version (GitHub marketplace once
   set up; until then `dev/package.sh` → Settings → Plugins: remove the old plugin, upload
-  `dist/video2aeo-<version>.plugin`) → new Cowork task with a working folder → `/video2aeo:episode`.
+  `dist/video2aeo-<version>.plugin`) → Code mode, new environment with a working folder → `/video2aeo:episode`.
 
 ### 3.2 Phase 1a – manual MVP (start here; ~1 week)
 
@@ -105,7 +105,7 @@ WordPress. No YouTube download, no WordPress push, no credentials.
 1. Publish the repo on GitHub and set up the marketplace (see §6, decision 1); install in Desktop from it.
 2. Create the first brand folder (`~/.video2aeo/brand.json`, `glossary.json`, `guidelines.md`) from the brand owner's
    material; fill every `{{…}}` placeholder.
-3. Run the manual flow end to end on the developer Mac, in Claude Code and in Desktop Cowork: transcript `.txt` →
+3. Run the manual flow end to end on the developer Mac, in Claude Code and in Desktop Code mode: transcript `.txt` →
    `youtube-description.txt` + `article.wp.html` + `wp-post-fields.json` → paste by hand → check chapters on YouTube
    and the article preview in WordPress.
 4. Run 5 back-catalogue episodes. Track human minutes per gate; target ≤ 60 min total.
@@ -171,6 +171,6 @@ channel wants to own; monthly AI-visibility check (ask LLMs the episode question
    show (`brand.formats.<id>.folder`, `_other` for the base format): `<root>/<series>/<yyyy-mm>-<series>-<nn>-<slug>/`.
    The plugin cannot choose the session folder, so skills call `workspace_status` and stop when it is wrong, and the
    output tools refuse paths outside the layout (`allow_outside_root` overrides). Plan: `docs/plans/2026-10-22-001-feat-episodes-root-series-folders-plan.md`.
-   Open: confirm in Desktop Cowork that the path the model sees (`pwd`) matches the path the MCP server sees.
+   Open: confirm in Desktop Code mode that the path the model sees (`pwd`) matches the path the MCP server sees.
 
 Brand-specific open questions (site, canonical URL, schedule wording) are tracked with the brand files, not here.

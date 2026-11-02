@@ -7,14 +7,15 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.8.2"
+  version: "0.9.0"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
 
-**STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
-`~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
-`setup` skill now and only then continue with the user's request. The output tools also refuse to run
+**STOP – preflight, before anything else:** call `setup_status`. If the tool is missing or fails to start, the helper
+is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue once the tools
+work. If `configured` is false (or `~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or
+call any other tool – run the `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 **Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,
@@ -93,10 +94,10 @@ transcript") or attaches it. Import it with `import_transcript(file, episode_dir
 
 Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir)`. It tries
 youtube-transcript-api, then `yt-dlp` (optional browser cookies in `~/.video2aeo/config.json`).
-- **`can_auto_install: true`** – neither tool is installed, so YouTube was never asked. Do not make the user open a
-  terminal: ask once, in plain words, „Липсват две малки помощни програми за автоматично сваляне на субтитри. Да ги
-  инсталирам ли сега?“ (*choice*, recommended „Да“). On yes call `install_subtitle_tools`; on `ok: true` call
-  `fetch_transcript` again once. On no, or `ok: false` (show `manual_command` in one line), use the manual route below.
+- **`missing_subtitle_tools` is in the result** – no download tool is installed, so YouTube was never asked. Do not
+  make the user open a terminal: make the one-question offer of the `setup` skill's last step (same wording, same
+  rules). On yes call `install_subtitle_tools`; on `ok: true` call `fetch_transcript` again once. On no, or `ok: false`
+  (show `manual_command` in one line), use the manual route below.
 - If both tools are installed and both fail, do not retry endlessly: tell the user in one short message that the transcript
 must be added by hand and offer the three ways from the returned `fallback` – YouTube Studio subtitles download, "Show
 transcript" copy, or an online YouTube-transcript service (paste the video address, copy/download the result) – then

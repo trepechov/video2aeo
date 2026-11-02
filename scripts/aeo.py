@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
 import aeo_pipeline as P  # noqa: E402
+import aeo_setup as S  # noqa: E402
 
 
 def main(argv=None):
@@ -61,7 +62,7 @@ def main(argv=None):
     elif a.cmd == "status":
         out = L.setup_status()
     elif a.cmd == "doctor":
-        out = L.check_environment()
+        out = S.check_environment()
     elif a.cmd == "save-setup":
         out = L.save_setup(**L.load_json(a.file))
     elif a.cmd == "split":

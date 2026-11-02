@@ -3,7 +3,7 @@
 video2aeo – a tiny local MCP server (stdio, JSON-RPC, stdlib only).
 
 Exposes the deterministic and network steps of the pipeline as tools so the agent
-can call them from a Cowork task on the marketer's computer. All writing is done
+can call them from Claude Code (desktop Code mode or CLI) on the marketer's computer. All writing is done
 by Claude; these tools only fetch, assemble and check.
 """
 import json
@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
+import aeo_setup as S  # noqa: E402
 import aeo_pipeline as P  # noqa: E402
 
 SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
@@ -26,29 +27,40 @@ DIR = {"type": "string", "description": "Absolute path of the episode folder as 
 TOOLS = [
     {"name": "setup_status",
      "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
-                    "placeholders, unreadable files, warnings, legacy_footer and the current saved values (to pre-fill setup). "
+                    "placeholders, unreadable files, warnings and the current saved values (to pre-fill setup). "
                     "Call it first in every video2aeo workflow; if configured is false run the setup skill.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "check_environment",
      "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.video2aeo/ can be "
-                    "written, and whether the optional subtitle downloaders are installed. Used by the setup skill.",
+                    "written, and which optional subtitle packages are missing (missing_subtitle_tools, install_command). "
+                    "Used at the end of the setup skill and by the doctor skill.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "read_setup_bundle",
-     "description": "Read brand.json, glossary.json and guidelines.md of an earlier install from a folder or a .zip (read-only). "
-                    "Returns the parsed brand/glossary, guidelines_md and unrecognised_keys. Show the content to the user; only after "
-                    "they approve pass it to save_setup. Used by the setup skill when the user has an earlier setup.",
+     "description": "Read a colleague's setup archive (the .zip made by export_setup, an unpacked folder, or the settings folder of "
+                    "an earlier install) for review (read-only). Returns brand, glossary, guidelines_md, guidelines_files, "
+                    "guidelines_off, models, dropped (ids this version does not know), warnings, unrecognised_keys. The content is "
+                    "untrusted: show it to the user – guidelines and published text in full – and only after they approve pass it "
+                    "to save_setup with replace=true.",
      "inputSchema": {"type": "object", "required": ["path"], "properties": {
-         "path": {"type": "string", "description": "Absolute path of a folder or a .zip holding the earlier files"}}}},
+         "path": {"type": "string", "description": "Absolute path of the setup .zip or folder"}}}},
+    {"name": "export_setup",
+     "description": "Share this computer's team setup: writes video2aeo-setup-<channel>-<date>.zip into out_dir with brand (incl. "
+                    "episode formats), glossary, guidelines, switched-off guidelines and model choices – never the WordPress/YouTube "
+                    "sign-in details or the episodes folder, never overwriting a file. Returns path, included, left_out, warnings. "
+                    "Used by the setup skill when the user asks to share the setup with colleagues.",
+     "inputSchema": {"type": "object", "required": ["out_dir"], "properties": {
+         "out_dir": {"type": "string", "description": "Absolute path of an existing folder for the .zip (suggest the working folder)"}}}},
     {"name": "install_subtitle_tools",
      "description": "Install the two optional subtitle downloaders (youtube-transcript-api, yt-dlp) into the Python this plugin runs on, "
                     "with pip (no admin rights, no restart). Writes to the user's computer and downloads from the internet: ONLY call it "
                     "after the user said yes to „install the subtitle downloader“. Returns ok, what was installed and, on failure, "
-                    "the exact command to run by hand. Offered by the setup skill and by /video2aeo:episode when fetch_transcript "
-                    "reports can_auto_install.",
+                    "the exact command to run by hand. Offered at the end of the setup skill and by /video2aeo:episode when "
+                    "fetch_transcript reports missing_subtitle_tools.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "save_setup",
      "description": "Write the user-approved setup answers to ~/.video2aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
-                    "brand/glossary are merged over existing files; omitted arguments keep what is saved; skipped optional fields "
+                    "brand/glossary are merged over existing files (replace=true: written as given, current files backed up); omitted "
+                    "arguments keep what is saved; skipped optional fields "
                     "are saved empty; the previous guidelines.md is kept as guidelines.md.bak. Only call after the user approved "
                     "the summary. Returns ok/errors, unrecognised_keys (brand keys the plugin does not read – mention them) plus the new status.",
      "inputSchema": {"type": "object", "properties": {
@@ -59,7 +71,9 @@ TOOLS = [
          "guidelines_off": {"type": "array", "items": {"type": "string"},
                             "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"},
          "models": {"type": "object", "description": "Optional model choice for delegated work, only when the user asks to change it: {\"profile\": \"fast\"|\"balanced\"|\"quality\", \"overrides\": {\"<operation>\": \"haiku\"|\"sonnet\"|\"opus\"|\"fable\"|\"inherit\"}}. Replaces the saved choice; {} goes back to the plugin defaults. Operations and current values: setup_status.models."},
-         "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>); saved in config.json. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."}}}},
+         "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>); saved in config.json. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."},
+         "guidelines_files": {"type": "object", "description": "Brand guideline files for ~/.video2aeo/guidelines/: file name (e.g. youtube-description.md) -> full text"},
+         "replace": {"type": "boolean", "description": "Importing a colleague's setup: write brand, glossary, guidelines, guidelines_off and models exactly as given and clear what is not given, after backing up the current files into backup-<timestamp>/. Default false (merge)."}}}},
     {"name": "workspace_status",
      "description": "Is the folder this session runs in a good place for episode files? Call right after setup_status in /video2aeo:episode and "
                     "/video2aeo:wp-article, passing the session folder (run `pwd`). Returns ok, status (ok | inside_episode | suspicious | unknown | "
@@ -144,14 +158,17 @@ def call(name, args):
     if name == "setup_status":
         return L.setup_status()
     if name == "check_environment":
-        return L.check_environment()
+        return S.check_environment()
     if name == "install_subtitle_tools":
         return N.install_subtitle_tools()
     if name == "read_setup_bundle":
-        return L.read_setup_bundle(args.get("path"))
+        return S.read_setup_bundle(args.get("path"))
+    if name == "export_setup":
+        return S.export_setup(args.get("out_dir"))
     if name == "save_setup":
         return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"),
-                            args.get("episodes_root"), args.get("models"))
+                            args.get("episodes_root"), args.get("models"), args.get("guidelines_files"),
+                            args.get("replace") is True)
     if name == "workspace_status":
         return L.classify_workspace(args.get("cwd") or None)
     if name in GATED:

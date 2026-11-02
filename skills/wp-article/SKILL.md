@@ -7,14 +7,15 @@ description: >
   episode's work/episode.json, renders article.wp.html and wp-post-fields.json, and stops at an approval step; an
   optional draft push to WordPress follows only on request.
 metadata:
-  version: "0.8.2"
+  version: "0.9.0"
 ---
 
 # /video2aeo:wp-article – knowledge-base article for an episode
 
-**STOP – preflight, before anything else:** call `setup_status`. If `configured` is false (or the tool is missing, or
-`~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or call any other tool – run the
-`setup` skill now and only then continue with the user's request. The output tools also refuse to run
+**STOP – preflight, before anything else:** call `setup_status`. If the tool is missing or fails to start, the helper
+is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue once the tools
+work. If `configured` is false (or `~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or
+call any other tool – run the `setup` skill now and only then continue with the user's request. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 **Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,

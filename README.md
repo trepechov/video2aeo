@@ -40,6 +40,72 @@ episodes/<yyyy-mm>-<series>-<nn>-<slug>/        e.g. episodes/2026-01-show-12-ep
 You paste the description into YouTube Studio and the article into the WordPress Code editor. Automatic subtitle
 download and WordPress draft push exist but are optional (see `docs/plugin-build-plan.md` §3.3).
 
+## Requirements
+
+| | Windows | macOS |
+|---|---|---|
+| **Claude** | Claude desktop app (or Claude Code CLI) | same |
+| **Python 3.9 or newer** | python.org/downloads – on the first screen of the installer **tick „Add python.exe to PATH“** (or install Python from the Microsoft Store) | python.org/downloads („macOS 64-bit universal2 installer“), or `xcode-select --install` in Terminal |
+| **Git for Windows** | git-scm.com, default options | not needed |
+
+Restart the Claude app after installing either one. If anything is missing later, `/video2aeo:doctor` checks the
+computer and walks you through the fix (on Windows it also adds Git's folder to your PATH, with your OK).
+
+## Install
+
+1. **Add the plugin.** Claude desktop app: Settings → **Plugins** → **Add** → add marketplace `trepechov/video2aeo` →
+   **Video2AEO** → **Install** (make sure it is switched on). Claude Code CLI:
+   `/plugin install video2aeo --marketplace trepechov/video2aeo`.
+2. **Switch to Claude Code mode** (toggle at the top left of the app), create a **new environment** and choose the
+   folder you work in (your episodes folder). `/video2aeo:` commands appear when you type `/`.
+3. **Run any `/video2aeo:` command.** The first time, setup starts by itself.
+
+## First run: two ways to set up
+
+- **Answer the questions** – channel, description header and footer (links, ads), brand glossary (names, caption
+  mistakes), episode formats, and the AEO guidelines to follow or switch off. Best for the first person in a team.
+- **Import a colleague's setup** – a colleague who already uses the plugin says „share my setup“ and sends you the
+  `video2aeo-setup-<channel>-<date>.zip`. You choose „import a colleague's setup“, review what it brings (its guidelines
+  and published texts are shown in full), and answer only what belongs to your computer – the episodes folder.
+
+Either way setup ends by offering the automatic subtitle download, and writes `~/.video2aeo/` for you – no files to
+edit by hand. Re-run `/video2aeo:setup` any time to change answers, import again or share.
+
+**Share your setup:** say „share my setup“ (or run `/video2aeo:setup` and ask). You get one `.zip` with the brand,
+glossary, guidelines, episode formats, switched-off guidelines and model choices – never WordPress passwords, YouTube
+cookies or your episodes folder. It is private brand material: send it to colleagues only. Importing replaces the
+team settings on the other computer and keeps the previous ones in a `backup-<date>` folder.
+
+## Usage
+
+In Claude Code mode with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript
+`.txt`; then `/video2aeo:wp-article` for the article. After a crash, `/video2aeo:resume` continues where it stopped.
+
+### Automatic subtitle download (optional)
+
+Without it you attach the transcript `.txt` (YouTube Studio → Subtitles → download) – that always works. With it the
+plugin fetches the subtitles from the video address using two small Python packages, `youtube-transcript-api` and
+`yt-dlp` (no YouTube API key, no channel access for public videos). Setup offers to install them at its end, and
+`/video2aeo:episode` offers it again only when it needs them; they go into the Python the plugin runs on (no admin
+rights, no restart). If that fails, the offer shows the exact command to run by hand; on a Homebrew/Linux Python it
+suggests `brew install yt-dlp` or `pipx install yt-dlp`.
+
+If YouTube answers „Sign in to confirm you're not a bot“ or blocks your address, let `yt-dlp` use a logged-in browser.
+Any YouTube account works, it does not have to be the channel's (a separate account is safer – automated use can get
+an account flagged). Create `~/.video2aeo/config.json` (`chmod 600`):
+```json
+{ "youtube": { "cookies_from_browser": "chrome" } }
+```
+or, if the browser's keychain is not reachable from the app, export a `cookies.txt` once and use
+`{ "youtube": { "cookies_file": "~/.video2aeo/cookies.txt" } }`. Cookies are a password: never paste them into chat
+or commit them. Private or unpublished videos still need an account that has access to them.
+
+## Updating
+
+When a new version is published (the `version` in the repository changes), open Settings → Plugins, refresh the
+marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Claude Code environment
+afterwards. Your settings in `~/.video2aeo/` are not touched.
+
 ## Who does what
 
 - **Claude writes all text** (transcript edit, questions, chapters, description, article, FAQ), guided by the
@@ -61,15 +127,16 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 | Skill | `episode` | `/video2aeo:episode` – transcript → knowledge map → YouTube description |
 | Skill | `wp-article` | `/video2aeo:wp-article` – article for an episode |
 | Skill | `resume` | `/video2aeo:resume` – continue an episode that crashed or stopped half way, from the files on disk |
-| Skill | `setup` | One-time setup on the marketer's computer |
+| Skill | `setup` | `/video2aeo:setup` – interview or import a colleague's setup; share your own |
+| Skill | `doctor` | `/video2aeo:doctor` – why the tools do not start; works without the plugin's helper |
 | Agent | `transcript-editor` | Raw transcript → edited transcript |
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
 | Agent | `aeo-reviewer` | Independent review before each approval |
-| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `install_subtitle_tools`, `get_video_info`, `fetch_transcript`, `wp_push_draft` |
+| Hook | SessionStart | Python-free check that Python (and on Windows `sh`) can be found; never blocks |
+| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `read_setup_bundle`, `export_setup`, `workspace_status`, `episode_path`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `install_subtitle_tools`, `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
-Agents and the local tool server load in **Claude Code mode** of the Claude desktop app (toggle at the top left) and in
-the Claude Code CLI. In plain chat only the skills load: the user pastes the transcript and the agent follows the same
-steps. Many scripts run during an episode, so always work in Code mode.
+Agents, the hook and the local tool server load in **Claude Code mode** of the desktop app and in the Claude Code CLI.
+In plain chat only the skills load, so always work in Code mode.
 
 **Long episodes and crashes.** The transcript is edited in chunks (`work/chunks/`), each finished chunk is a file, and
 `episode_status` works out where an episode stands from the files – so after a crash `/video2aeo:resume` continues with
@@ -79,88 +146,20 @@ models“ (profile fast / balanced / quality, or single operations).
 
 ## Brand, glossary and guidelines
 
-The plugin is brand-neutral and ships general AEO guidelines and best practices
-(`instructions/aeo-rules.md`). Each user's brand lives on their computer in `~/.video2aeo/`:
+The plugin is brand-neutral and ships general AEO guidelines and best practices (`instructions/aeo-rules.md`). Each
+user's brand lives on their computer in `~/.video2aeo/`:
 
 | File | Purpose |
 |---|---|
-| `brand.json` | Channel, series, topics, site, organization, people, approved footer/promo block, disclaimer – any keys of `config/brand.json`, merged over it |
+| `brand.json` | Channel, series, topics, site, organization, people, episode formats, approved footer/promo block, disclaimer – any keys of `config/brand.json`, merged over it |
 | `glossary.json` | Brand names, people, ASR fixes, sponsor-read markers – added to `config/glossary.json` |
-| `guidelines.md` or `guidelines/*.md` | Brand-specific instructions (house style, tone, terminology, compliance); they extend the general guidelines |
-| `config.json` | Optional: WordPress credentials for the draft push, and `youtube.cookies_from_browser` / `youtube.cookies_file` for the subtitle download (`chmod 600`) |
+| `guidelines.md` and `guidelines/*.md` | Brand-specific instructions (house style, tone, terminology, compliance); they extend the general guidelines, `guidelines/<output>.md` per output |
+| `setup.json` | Setup done, guidelines switched off |
+| `config.json` | This computer only: episodes folder, model choices, and optionally WordPress credentials and YouTube cookies (`chmod 600`) – never shared |
 
 You normally never edit these files: the `setup` skill writes them after you approve a summary (the previous
-`guidelines.md` is kept as `guidelines.md.bak`; a damaged file is kept as `<name>.broken` and rewritten). Channel name
-and topics are required; skipped optional values are saved empty. Set `VIDEO2AEO_HOME` to use another folder.
-
-## Setup
-
-1. Install the plugin from GitHub – everything is done with the mouse:
-   - Claude desktop app (Mac): Claude menu → **Settings** → **Plugins** → **Add** (top right) → add marketplace →
-     enter the GitHub repository `trepechov/video2aeo` → search for **Video2AEO** → **Install**
-     → make sure it is switched on (not "Disabled").
-   - Claude Code: `/plugin install video2aeo --marketplace trepechov/video2aeo`
-     (or `claude plugin marketplace add trepechov/video2aeo && claude plugin install video2aeo@video2aeo`).
-   Then **switch the app to Claude Code mode** (the toggle at the top left), create a **new environment** and choose
-   the folder you want to work in (your episodes folder): `/video2aeo:` commands appear when you type `/`.
-2. Requirements on the computer:
-
-   | Needed | Windows | macOS |
-   |---|---|---|
-   | Python 3.9 or newer | python.org/downloads, **tick "Add python.exe to PATH"** (or install from the Microsoft Store) | preinstalled |
-   | Git for Windows (provides `sh`) | git-scm.com, default options; its default leaves `sh` off the PATH – run `/video2aeo:doctor` once, it adds the folder (with your OK) | not needed |
-
-   Restart the Claude app after installing either one (the PATH is only read at start). The plugin finds `python3`,
-   `python` or `py -3` by itself and checks this at the start of every session; if something is missing, run
-   `/video2aeo:doctor` for the exact steps.
-3. First use: just run any `/video2aeo:` command in Claude Code mode. If the one-time setup is not done, the `setup` skill
-   starts by itself and asks for the channel, the description header and footer (links, messages, ads), the brand
-   glossary (names, caption mistakes), and shows the AEO guidelines for you to verify, follow or switch off. It writes `~/.video2aeo/` for you –
-   no files to edit by hand. Re-run `/video2aeo:setup` any time to change the answers.
-
-### Automatic subtitle download (optional, offered during setup)
-
-Without it you attach the transcript `.txt` (YouTube Studio → Subtitles → download) – that always works. To let the
-plugin fetch the subtitles from the video address it needs two small Python packages, `youtube-transcript-api` and
-`yt-dlp`. No YouTube API key and no channel access are needed for public videos.
-
-1. **Nothing to do by hand.** `/video2aeo:setup` checks for them and asks one question; on „yes“ it installs them with
-   pip into the Python the plugin itself runs on (the `install_subtitle_tools` tool, no admin rights, no restart).
-   `/video2aeo:episode` makes the same offer if the first run finds them missing.
-2. **Manual fallback** – the offer prints the exact command if pip fails. It is the plugin's own interpreter, so on
-   Windows it looks like `"C:\…\Python314\python.exe" -m pip install --user youtube-transcript-api yt-dlp`
-   (`check_environment` returns it as `install_command`). A global `brew install yt-dlp` also works on macOS.
-3. Only if YouTube answers „Sign in to confirm you're not a bot“ or blocks your address: let `yt-dlp` use a logged-in
-   browser. Any YouTube account works, it does not have to be the channel's (a separate account is safer – automated
-   use can get an account flagged). Create `~/.video2aeo/config.json` (`chmod 600`):
-   ```json
-   { "youtube": { "cookies_from_browser": "chrome" } }
-   ```
-   or, if the browser's keychain is not reachable from the app, export a `cookies.txt` once and use
-   `{ "youtube": { "cookies_file": "~/.video2aeo/cookies.txt" } }`. Cookies are a password: never paste them into chat
-   or commit them. Private or unpublished videos still need an account that has access to them.
-
-### Minimal setup on a marketer's computer
-
-1. Install Claude (desktop app or Claude Code) and sign in.
-2. Add the marketplace and install the plugin (step 1 above).
-3. Run `/video2aeo:setup` once and answer the questions (channel, header/footer, glossary, guidelines).
-4. Automatic subtitles are offered by the setup. Python is preinstalled on macOS; on Windows install Python and
-   Git for Windows first (table above).
-
-That is all – then `/video2aeo:episode` with the episode address or transcript.
-
-## Updating
-
-When a new version is published (the `version` in the repository changes), open Settings → Plugins, refresh the
-marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Claude Code environment afterwards.
-Your brand settings in `~/.video2aeo/` are not touched. Settings of the former name (`yt-aeo`) in `~/.yt-aeo/` are
-copied to `~/.video2aeo/` the first time the new plugin runs; the old folder is left in place as a backup and can be
-deleted once everything works.
-
-## Usage
-
-In Claude Code mode with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript `.txt`; then `/video2aeo:wp-article` for the article.
+`guidelines.md` is kept as `guidelines.md.bak`, an import keeps the replaced files in `backup-<date>/`, a damaged file
+is kept as `<name>.broken`). Set `VIDEO2AEO_HOME` to use another folder.
 
 ## Developing (Claude Code) and testing (Claude Desktop)
 

@@ -19,6 +19,7 @@ os.environ["VIDEO2AEO_HOME"] = str(TMP / "home")
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "dev"))
 import aeo_lib as L  # noqa: E402
+import aeo_setup as S  # noqa: E402
 import fixture  # noqa: E402
 
 checks = 0
@@ -44,56 +45,67 @@ ids = re.findall(r"^\| `([a-z-]+)` \|", catalog, re.M)
 check(tuple(ids) == L.ADJUSTABLE_GUIDELINES, f"catalog ids {ids} != ADJUSTABLE_GUIDELINES")
 
 # --- environment check is read-only --------------------------------------------------------------
-env = L.check_environment()
+env = S.check_environment()
 check(env["ok"] and env["python"]["ok"], f"check_environment not ok: {env['problems']}")
+check(set(env) == {"ok", "problems", "python", "user_dir", "user_dir_writable", "missing_subtitle_tools", "install_command"},
+      f"check_environment fields: {sorted(env)}")
 check(not L.USER_DIR.exists(), "check_environment must not create the settings folder")
 
 # --- subtitle tools: offered, never installed silently; the installer is exercised with pip mocked ------------
 import aeo_net as N
 import importlib.util as _iu
-real_find, real_run = _iu.find_spec, N.subprocess.run
-check(env["missing_subtitle_tools"] == [p for m, p in L.SUBTITLE_PACKAGES.items() if real_find(m) is None],
+real_find, real_run, real_which, real_access = _iu.find_spec, N.subprocess.run, N.shutil.which, N.os.access
+real_mod, real_ext = sys.modules.get("youtube_transcript_api"), S.externally_managed
+check(env["missing_subtitle_tools"] == [p for m, p in S.SUBTITLE_PACKAGES.items() if real_find(m) is None],
       "check_environment must list the missing subtitle packages")
-_iu.find_spec = lambda name, *a, **k: None if name in L.SUBTITLE_PACKAGES else real_find(name, *a, **k)
+_iu.find_spec = lambda name, *a, **k: None if name in S.SUBTITLE_PACKAGES else real_find(name, *a, **k)
+S.externally_managed = lambda: False
 try:
-    env_missing = L.check_environment()
+    env_missing = S.check_environment()
     check(env_missing["missing_subtitle_tools"] == ["youtube-transcript-api", "yt-dlp"]
           and "pip" in env_missing["install_command"] and sys.executable in env_missing["install_command"],
           f"install_command must use this interpreter: {env_missing['install_command']}")
     calls = []
-    N.subprocess.run = lambda cmd, **k: calls.append(cmd) or type("R", (), {"returncode": 1, "stdout": "", "stderr": "no network"})()
+    def fake_run(cmd, **k):
+        calls.append((cmd, k))
+        return type("R", (), {"returncode": 1, "stdout": "", "stderr": "no network"})()
+    N.subprocess.run = fake_run
     res = N.install_subtitle_tools()
-    check(calls and calls[0][:4] == [sys.executable, "-m", "pip", "install"] and "youtube-transcript-api" in calls[0],
+    check(calls and calls[0][0][:4] == [sys.executable, "-m", "pip", "install"] and "youtube-transcript-api" in calls[0][0],
           f"pip must run in this interpreter: {calls}")
+    check(calls[0][1].get("stdin") is N.subprocess.DEVNULL, "pip must not inherit the MCP stdin")
     check(res["ok"] is False and res["still_missing"] == ["youtube-transcript-api", "yt-dlp"] and "manual_command" in res,
           f"failed install must report the manual command: {res}")
-    real_which, real_mod = N.shutil.which, sys.modules.get("youtube_transcript_api")
+    S.externally_managed = lambda: True                                   # Homebrew / distro Python: pip is refused
+    calls.clear()
+    res = N.install_subtitle_tools()
+    check(not calls and res["ok"] is False and "yt-dlp" in res["manual_command"] and "pip" not in res["manual_command"],
+          f"externally managed Python must not run pip and must suggest another install: {res}")
+    S.externally_managed = lambda: False
     N.shutil.which = lambda name: None
+    N.os.access = lambda p, m: False
     sys.modules["youtube_transcript_api"] = None  # makes `import youtube_transcript_api` raise ImportError, no network
     fail = N.fetch_transcript("https://www.youtube.com/watch?v=abcdefghijk", TMP / "t", "bg")
-    check(fail["ok"] is False and fail.get("can_auto_install") is True, f"missing tools must set can_auto_install: {fail}")
+    check(fail["ok"] is False and fail.get("missing_subtitle_tools") == ["youtube-transcript-api", "yt-dlp"]
+          and "can_auto_install" not in fail, f"no usable tool must list both as missing: {fail}")
+    N.os.access = lambda p, m: p == "/opt/homebrew/bin/yt-dlp"            # brew yt-dlp outside the app's PATH
+    check(N._ytdlp_cmd() == ["/opt/homebrew/bin/yt-dlp"], f"Homebrew yt-dlp must be found: {N._ytdlp_cmd()}")
+    def slow_run(cmd, **k):
+        raise N.subprocess.TimeoutExpired(cmd, 180)
+    N.subprocess.run = slow_run
+    fail = N.fetch_transcript("https://www.youtube.com/watch?v=abcdefghijk", TMP / "t", "bg")
+    check(fail["ok"] is False and "fallback" in fail and any("TimeoutExpired" in e for e in fail["errors"])
+          and "missing_subtitle_tools" not in fail,
+          f"a yt-dlp timeout must end in the manual fallback, not an exception: {fail}")
 finally:
-    _iu.find_spec, N.subprocess.run, N.shutil.which = real_find, real_run, real_which
+    _iu.find_spec, N.subprocess.run, N.shutil.which, N.os.access = real_find, real_run, real_which, real_access
+    S.externally_managed = real_ext
     if real_mod is None:
         sys.modules.pop("youtube_transcript_api", None)
     else:
         sys.modules["youtube_transcript_api"] = real_mod
 
-# --- legacy ~/.yt-aeo is copied once to ~/.video2aeo (HOME points at a temp dir, no env override) --------
 import subprocess
-fake_home = TMP / "legacy-home"
-(fake_home / ".yt-aeo").mkdir(parents=True)
-(fake_home / ".yt-aeo" / "brand.json").write_text('{"channel": "Old"}', encoding="utf-8")
-probe = ("import sys; sys.path.insert(0, %r); import aeo_lib as L; "
-         "print(L.USER_DIR, L.MIGRATED_FROM, sep='|')" % str(ROOT / "scripts"))
-env = {k: v for k, v in os.environ.items() if k not in ("VIDEO2AEO_HOME", "YT_AEO_HOME")}
-env["HOME"] = str(fake_home)
-out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True).stdout.strip()
-check(out == f"{fake_home / '.video2aeo'}|{fake_home / '.yt-aeo'}", f"legacy folder must be migrated: {out}")
-check((fake_home / ".video2aeo" / "brand.json").read_text(encoding="utf-8") == '{"channel": "Old"}'
-      and (fake_home / ".yt-aeo" / "brand.json").exists(), "migration must copy and keep the old folder")
-out = subprocess.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True).stdout.strip()
-check(out == f"{fake_home / '.video2aeo'}|", f"second run must not migrate again: {out}")
 
 # --- first run: not configured, nothing written ---------------------------------------------------
 st = L.setup_status()
@@ -199,8 +211,8 @@ link.symlink_to(root, target_is_directory=True)
 check(L.classify_workspace(link)["status"] == "ok", "symlink to the root is ok")
 other = TMP / "elsewhere"
 other.mkdir()
-(other.parent / "legacy-ep" / "work").mkdir(parents=True)
-(other.parent / "legacy-ep" / "work" / "episode.json").write_text("{}", encoding="utf-8")
+(other.parent / "outside-ep" / "work").mkdir(parents=True)
+(other.parent / "outside-ep" / "work" / "episode.json").write_text("{}", encoding="utf-8")
 sus = L.classify_workspace(Path.home())
 check(sus["status"] == "suspicious" and not sus["ok"] and str(root.resolve()) in sus["next_step"], f"home must be suspicious: {sus}")
 check(L.classify_workspace(Path.home() / "Downloads")["status"] in ("suspicious", "unknown"), "Downloads not ok")
@@ -233,7 +245,7 @@ check(bad and bad["wrong_folder"] and str(root.resolve()) in bad["expected"], f"
 check(L.check_episode_dir(root / "ep-directly-in-root")["wrong_folder"], "episode without series folder fails")
 check(L.check_episode_dir(root / "unknown-series" / "ep")["wrong_folder"], "unknown series folder fails")
 check(L.check_episode_dir(root / "clips" / ".." / ".." / "x")["wrong_folder"], "path traversal fails")
-check(L.check_episode_dir(TMP / "legacy-ep") is None, "existing episode outside the root may be resumed")
+check(L.check_episode_dir(TMP / "outside-ep") is None, "existing episode outside the root may be resumed")
 check(L.check_episode_dir(TMP / "elsewhere" / "ep", allow_outside_root=True) is None, "override passes")
 
 # the MCP layer: wrong folder writes nothing, right folder works
@@ -262,10 +274,8 @@ top, foot = L._promo_and_footer(desc(promo="ADS", social_links=""))
 check(top == "" and "ADS" in foot and "📲" not in foot, "promo at end / empty social line dropped")
 top, foot = L._promo_and_footer(desc(promo="ADS", promo_position="top"))
 check(top == "ADS" and "ADS" not in foot, "promo at top")
-legacy = desc(footer="Line\n____________\nOLD ADS\n____________\nEnd", promo="OLD ADS")
-check(L._promo_and_footer(legacy)[1].count("OLD ADS") == 1, "legacy footer with the same promo must not duplicate")
-alias = desc(footer="A\n____________\n{{PROMO_BLOCK}}\n____________\nB", promo="ADS")
-check("ADS" in L._promo_and_footer(alias)[1] and "{{" not in L._promo_and_footer(alias)[1], "{{PROMO_BLOCK}} alias")
+inline = desc(footer="Line\n____________\nADS IN FOOTER\n____________\nEnd", promo="ADS IN FOOTER")
+check(L._promo_and_footer(inline)[1].count("ADS IN FOOTER") == 1, "a footer that already holds the promo must not duplicate it")
 check("{{SCHEDULE}}" in L._promo_and_footer(desc(footer="x {{SCHEDULE}}"))[1], "literal {{X}} must stay visible")
 
 # --- validator with the promo at the top (incl. a promo that contains a separator) ------------------
@@ -314,14 +324,6 @@ check((yt_dir / "work/review.md").exists() and not (yt_dir / "review.md").exists
 raw = L.write_raw_transcript([{"start": 0.0, "text": "hello"}], yt_dir, "test")
 check(all(f.startswith("work/") for f in raw["files"]) and (yt_dir / "work/transcript.raw.txt").exists(),
       "raw transcript must be written to work/")
-
-# --- older flat folders (everything in one folder) are still read ----------------------------------
-flat = TMP / "flat"
-flat.mkdir()
-for f in (ep_dir / "work").iterdir():
-    (flat / f.name).write_bytes(f.read_bytes())
-check(L.render_package(flat, brand)["written"][0] == "youtube-description.txt", "flat layout not rendered")
-check(L.validate_package(flat, brand)["ok"], "flat layout not validated")
 
 # --- empty brand glossary is reported ---------------------------------------------------------------
 check(any("glossary" in w for w in L.setup_status()["warnings"]) or L.setup_status()["glossary_entries"] > 0,
@@ -402,10 +404,10 @@ short = TMP / "short"
 (short / "work").mkdir(parents=True)
 (short / "work" / "transcript.raw.txt").write_text("\n\n".join(raw_para(s) for s in range(0, 600, 30)) + "\n", encoding="utf-8")
 check(P.split_transcript(short)["total"] == 1, "a 10 minute episode is one chunk")
-# legacy / single-call episodes (edited transcript without chunks) still count as edited
-legacy = fixture.build(TMP / "pipeline-legacy")
-st = P.episode_status(legacy)
-check("edit_transcript" in st["done"] and st["step"] != "transcript", f"legacy episode: {st['step']} {st['done']}")
+# single-call episodes (edited transcript without chunks) count as edited
+single = fixture.build(TMP / "pipeline-single")
+st = P.episode_status(single)
+check("edit_transcript" in st["done"] and st["step"] != "transcript", f"single-call episode: {st['step']} {st['done']}")
 
 # --- progress, deferred gates -------------------------------------------------------------------------
 P.record_progress(long_ep, "chunk-04", error="timeout")
@@ -467,28 +469,191 @@ check(L.load_json(L.USER_DIR / "config.json")["models"]["profile"] == "quality",
 ok = L.save_setup(models={})
 check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.load_config(), "models {} resets to defaults")
 
-# --- import of an earlier setup (folder and zip), unrecognised keys, empty disclaimer line --------------
+# --- import of a settings folder and a zip without manifest, unrecognised keys, empty disclaimer line --------------
 import zipfile  # noqa: E402
-old_dir = TMP / "old-install"
-old_dir.mkdir()
-(old_dir / "brand.json").write_text(json.dumps({"channel": "Old Show", "podcast": {"host": "A"}, "description": {"disclaimer_url": ""}}), encoding="utf-8")
-(old_dir / "glossary.json").write_text(json.dumps({"fixes": [["x", "y"]]}), encoding="utf-8")
-(old_dir / "guidelines.md").write_text("# Rules\n", encoding="utf-8")
-(old_dir / "other.txt").write_text("ignored", encoding="utf-8")
-with zipfile.ZipFile(TMP / "old.zip", "w") as z:
+set_dir = TMP / "settings-folder"
+set_dir.mkdir()
+(set_dir / "brand.json").write_text(json.dumps({"channel": "Folder Show", "podcast": {"host": "A"}, "description": {"disclaimer_url": ""}}), encoding="utf-8")
+(set_dir / "glossary.json").write_text(json.dumps({"fixes": [["x", "y"]]}), encoding="utf-8")
+(set_dir / "guidelines.md").write_text("# Rules\n", encoding="utf-8")
+(set_dir / "other.txt").write_text("ignored", encoding="utf-8")
+with zipfile.ZipFile(TMP / "plain.zip", "w") as z:
     for f in ("brand.json", "glossary.json", "guidelines.md", "other.txt"):
-        z.write(old_dir / f, f"Archive/{f}")
-for src in (old_dir, TMP / "old.zip"):
-    b = L.read_setup_bundle(str(src))
-    check(b["ok"] and b["found"] == ["brand.json", "glossary.json", "guidelines.md"] and b["brand"]["channel"] == "Old Show"
+        z.write(set_dir / f, f"Archive/{f}")
+for src in (set_dir, TMP / "plain.zip"):
+    b = S.read_setup_bundle(str(src))
+    check(b["ok"] and b["found"] == ["brand.json", "glossary.json", "guidelines.md"] and b["brand"]["channel"] == "Folder Show"
           and b["guidelines_md"].startswith("# Rules") and b["unrecognised_keys"] == ["podcast"], f"bundle from {src.name}: {b}")
-check(not L.read_setup_bundle(str(TMP / "nothing-here"))["ok"], "missing bundle path")
+check(not S.read_setup_bundle(str(TMP / "nothing-here"))["ok"], "missing bundle path")
 (TMP / "empty-dir").mkdir()
-check(not L.read_setup_bundle(str(TMP / "empty-dir"))["ok"], "folder without setup files")
+check(not S.read_setup_bundle(str(TMP / "empty-dir"))["ok"], "folder without setup files")
 saved = L.save_setup(brand=b["brand"], glossary=b["glossary"], guidelines_md=b["guidelines_md"])
 check(saved["ok"] and saved["unrecognised_keys"] == ["podcast"], f"save_setup reports unrecognised keys: {saved.get('errors')}")
 top, foot = L._promo_and_footer(desc(disclaimer_url=""))
 check("отказ от отговорност" not in foot and "{DISCLAIMER_URL}" not in foot, f"empty disclaimer line must be dropped: {foot!r}")
+
+# --- setup archive: export on one computer, review + replace-import on another ------------------------------------
+real_user_dir = L.USER_DIR
+def use_home(name):
+    L.USER_DIR = TMP / name
+    return L.USER_DIR
+try:
+    a = use_home("team-a")
+    (TMP / "eps-a").mkdir()
+    r = L.save_setup(brand={"channel": "Тестов канал", "topics": "money", "description.promo": "PROMO"},
+                     glossary={"fixes": [["a", "b"]]}, guidelines_md="# House rules\n",
+                     guidelines_files={"youtube-description.md": "# YT additions\n"},
+                     guidelines_off=[L.ADJUSTABLE_GUIDELINES[0]], episodes_root=str(TMP / "eps-a"),
+                     models={"profile": "fast"})
+    check(r["ok"] and r["configured"], f"team-a setup: {r.get('errors') or r.get('missing')}")
+    cfg = L.load_json(a / "config.json")
+    L.save_setup(brand={"site": {"base_url": "https://wp.example"}})
+    cfg = L.load_json(a / "config.json")
+    cfg.update(wordpress={"base_url": "https://wp.example", "username": "ed", "app_password": "SECRET-PASS-123"},
+               youtube={"cookies_file": "/Users/someone/cookies-SECRET.txt"})
+    (a / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    (TMP / "share").mkdir()
+    ex = S.export_setup(str(TMP / "share"))
+    check(ex["ok"] and Path(ex["path"]).name.startswith("video2aeo-setup-testov-kanal-") and not ex["warnings"],
+          f"export (transliterated name, no warning for the public WordPress address): {ex}")
+    with zipfile.ZipFile(ex["path"]) as z:
+        names = sorted(z.namelist())
+        blob = b"".join(z.read(n) for n in names)
+    check(names == ["brand.json", "glossary.json", "guidelines.md", "guidelines/youtube-description.md",
+                    "video2aeo-setup.json"], f"archive names: {names}")
+    check(b"SECRET-PASS-123" not in blob and b"cookies-SECRET" not in blob and str(TMP / "eps-a").encode() not in blob,
+          "archive must not hold credentials or the episodes folder")
+    ex2 = S.export_setup(str(TMP / "share"))
+    check(ex2["ok"] and ex2["path"] != ex["path"] and Path(ex["path"]).exists(), "second export must not overwrite")
+    check(not S.export_setup("relative/dir")["ok"], "export needs an absolute folder")
+
+    b = use_home("team-b")
+    (TMP / "eps-b").mkdir()
+    check(not S.export_setup(str(TMP / "share"))["ok"], "export before setup must fail")
+    imp = S.read_setup_bundle(ex["path"])
+    check(imp["ok"] and imp["guidelines_off"] == [L.ADJUSTABLE_GUIDELINES[0]] and imp["models"] == {"profile": "fast"}
+          and imp["guidelines_files"] == {"youtube-description.md": "# YT additions\n"} and not imp["dropped"],
+          f"import of the export: {imp}")
+    r = L.save_setup(brand=imp["brand"], glossary=imp["glossary"], guidelines_md=imp["guidelines_md"],
+                     guidelines_files=imp["guidelines_files"], guidelines_off=imp["guidelines_off"], models=imp["models"],
+                     episodes_root=str(TMP / "eps-b"), replace=True)
+    check(r["ok"] and r["configured"] and (b / "guidelines" / "youtube-description.md").read_text() == "# YT additions\n"
+          and "backup" not in r, f"replace-import into an empty home: {r.get('errors')}")
+    same = ("configured", "guidelines_off", "models", "glossary_entries")
+    status_b = {k: r[k] for k in same}
+    use_home("team-a")
+    status_a = L.setup_status()
+    cur_a = {k: v for k, v in status_a["current"].items() if k != "episodes_root"}
+    cur_b = {k: v for k, v in r["current"].items() if k != "episodes_root"}
+    check(status_b == {k: status_a[k] for k in same} and cur_a == cur_b, "imported setup must equal the exported one")
+    use_home("team-b")
+
+    # replace over a configured home with a minimal archive clears what the archive does not carry
+    (TMP / "mini").mkdir()
+    (TMP / "mini" / "brand.json").write_text("﻿" + json.dumps({"channel": "Mini", "topics": "t"}), encoding="utf-8")
+    mini = S.read_setup_bundle(str(TMP / "mini"))
+    check(mini["ok"] and "models" not in mini and "guidelines_off" not in mini, f"BOM brand-only folder: {mini}")
+    r = L.save_setup(brand=mini["brand"], replace=True)
+    check(r["ok"] and r.get("backup") and not (b / "guidelines.md").exists()
+          and not list((b / "guidelines").glob("*.md")) and L.load_json(b / "glossary.json") == {}
+          and r["guidelines_off"] == [] and "models" not in L.load_json(b / "config.json")
+          and L.load_json(b / "config.json").get("episodes_root"), f"replace must clear and back up: {r.get('errors')}")
+    first_backup = Path(r["backup"])
+    check((first_backup / "guidelines" / "youtube-description.md").exists() and (first_backup / "glossary.json").exists()
+          and L.load_json(first_backup / "config.json") == {"models": {"profile": "fast"}},
+          "backup holds the replaced files and only the models of config.json")
+    r2 = L.save_setup(brand=mini["brand"], replace=True)
+    check(r2["ok"] and r2["backup"] != r["backup"] and (first_backup / "guidelines.md").exists(), "second import keeps the first backup")
+    undo = S.read_setup_bundle(str(first_backup))
+    check(undo["ok"] and undo["brand"]["channel"] == "Тестов канал" and undo["models"] == {"profile": "fast"},
+          f"a backup folder can be imported to undo: {undo}")
+
+    # tolerant import: newer format, unknown ids; earlier install with credentials
+    with zipfile.ZipFile(TMP / "newer.zip", "w") as z:
+        z.writestr("video2aeo-setup.json", json.dumps({"archive_format": 99, "guidelines_off": ["no-such-rule"],
+                                                       "models": {"profile": "turbo", "overrides": {"edit": "gpt"}}}))
+        z.writestr("brand.json", json.dumps({"channel": "N"}))
+    nw = S.read_setup_bundle(str(TMP / "newer.zip"))
+    check(nw["ok"] and nw["warnings"] and nw["guidelines_off"] == [] and nw["models"] == {} and len(nw["dropped"]) == 3,
+          f"newer archive: {nw}")
+    leg = TMP / "earlier" / ".video2aeo"
+    leg.mkdir(parents=True)
+    (leg / "brand.json").write_text(json.dumps({"channel": "E"}), encoding="utf-8")
+    (leg / "setup.json").write_text(json.dumps({"guidelines_off": [L.ADJUSTABLE_GUIDELINES[0]]}), encoding="utf-8")
+    (leg / "config.json").write_text(json.dumps({"models": {"profile": "quality"}, "wordpress": {"app_password": "X-SECRET"}}),
+                                     encoding="utf-8")
+    el = S.read_setup_bundle(str(TMP / "earlier"))
+    check(el["ok"] and el["guidelines_off"] == [L.ADJUSTABLE_GUIDELINES[0]] and el["models"] == {"profile": "quality"}
+          and any("NOT imported" in w for w in el["warnings"]) and "X-SECRET" not in json.dumps(el), f"earlier install: {el}")
+
+    # hostile archives are refused as a whole
+    def zip_with(name, entries):
+        path = TMP / name
+        with zipfile.ZipFile(path, "w") as z:
+            for n, body in entries:
+                z.writestr(n, body)
+        return str(path)
+    link = zipfile.ZipInfo("brand.json")
+    link.external_attr = (0o120777 << 16)
+    corrupt = zip_with("h6.zip", [("brand.json", "{" + '"channel": "x", ' * 200 + '"a": 1}')])
+    raw = bytearray(Path(corrupt).read_bytes())
+    raw[60:80] = b"\xff" * 20                                   # damage the compressed data of the member
+    Path(corrupt).write_bytes(bytes(raw))
+    before = sorted(p.name for p in b.iterdir())
+    for label, path, reason in (("traversal", zip_with("h1.zip", [("../brand.json", "{}")]), "unsafe"),
+                                ("absolute", zip_with("h2.zip", [("/etc/brand.json", "{}")]), "unsafe"),
+                                ("symlink", zip_with("h3.zip", [(link, "/etc/passwd")]), "link"),
+                                ("oversized", zip_with("h4.zip", [("brand.json", "x" * (S.ARCHIVE_MAX_FILE + 1))]), "too large"),
+                                ("many", zip_with("h5.zip", [(f"f{i}.txt", "") for i in range(S.ARCHIVE_MAX_MEMBERS + 1)]), "too many"),
+                                ("corrupt", corrupt, "Could not read"),
+                                ("dotted clash", zip_with("h7.zip", [("brand.json", json.dumps({"a": 1, "a.b": 2}))]), "Could not read")):
+        res = S.read_setup_bundle(path)
+        check(not res["ok"] and reason in " ".join(res["errors"]), f"hostile archive ({label}) must be refused: {res}")
+    check(sorted(p.name for p in b.iterdir()) == before, "reading archives must not write anything")
+    finder = zip_with("finder.zip", [("Team/brand.json", json.dumps({"channel": "F"})), ("__MACOSX/Team/._brand.json", "junk")])
+    fz = S.read_setup_bundle(finder)
+    check(fz["ok"] and fz["brand"]["channel"] == "F" and fz["found"] == ["brand.json"], f"Finder zip with a wrapping folder: {fz}")
+    check(not L.save_setup(brand={"channel": "x"}, guidelines_files={"a.md\n": "x"})["ok"], "file name with a newline rejected")
+    check(not S.read_setup_bundle("  ")["ok"], "empty path must be refused")
+    check(not L.save_setup(brand={"channel": "x"}, guidelines_files={"../evil.md": "x"})["ok"], "unsafe guideline file name rejected")
+
+    # a failed replace keeps the backup, says where it is, and does not count as configured
+    real_write = L._write_atomic
+    def failing_write(path, text):
+        if path.name == "glossary.json":
+            raise OSError("disk full")
+        real_write(path, text)
+    L._write_atomic = failing_write
+    try:
+        bad = L.save_setup(brand=mini["brand"], glossary={"fixes": []}, replace=True)
+    finally:
+        L._write_atomic = real_write
+    check(not bad["ok"] and bad.get("backup") and Path(bad["backup"]).is_dir() and not bad["configured"]
+          and any("restore" in e for e in bad["errors"]), f"failed replace: {bad}")
+
+    # Cyrillic guideline file names travel through export and import; Git Bash paths work on Windows
+    use_home("team-c")
+    (TMP / "eps-c").mkdir()
+    L.save_setup(brand={"channel": "C", "topics": "t"}, guidelines_files={"правила за тон.md": "# Тон\n"},
+                 episodes_root=str(TMP / "eps-c"))
+    exc = S.export_setup(str(TMP / "share"))
+    cyr = S.read_setup_bundle(exc["path"])
+    check(cyr["ok"] and cyr["guidelines_files"] == {"правила за тон.md": "# Тон\n"}, f"Cyrillic guideline file: {cyr}")
+    real_os_name = L.os.name
+    L.os.name = "nt"
+    try:
+        check(L.native_path("/c/Users/x/Desktop") == "C:\\Users\\x\\Desktop" and L.native_path("C:\\a") == "C:\\a"
+              and L.native_path("/Users/x") == "/Users/x", "Git Bash paths become Windows paths")
+    finally:
+        L.os.name = real_os_name
+
+    # export warns about credential-looking content
+    use_home("team-a")
+    L.save_setup(brand={"organization": {"api_key": "k"}})
+    ex3 = S.export_setup(str(TMP / "share"))
+    check(ex3["ok"] and any("credentials" in w for w in ex3["warnings"]), f"secret-like key must warn: {ex3['warnings']}")
+finally:
+    L.USER_DIR = real_user_dir
 
 # --- launcher and SessionStart check without python3 on PATH (Windows-like) --------------------------
 def tool_path(extra):
@@ -522,17 +687,16 @@ for label, bindir in (("python", only_python), ("stub", store_stub), ("none", to
     r = run_sh(ROOT / "hooks" / "check-deps.sh", bindir)
     check(r.returncode == 0, f"check-deps.sh must always exit 0 ({label}): {r.returncode}")
     check(("FAILED" in r.stdout) == (label != "python"), f"check-deps.sh message ({label}): {r.stdout!r}")
-(TMP / "no-home").mkdir(exist_ok=True)
-run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
-(TMP / "no-home" / "last_python").write_text("/old/python\n")
-r = run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
-check("changed" in r.stdout and r.returncode == 0, f"changed Python must be reported: {r.stdout!r}")
 for answer, expect_fail in (("on-path", False), ("found:C:\\Git\\bin", True), ("git-missing", True)):  # Windows PATH check
+    args_log = TMP / f"ps-args-{answer[:5]}.txt"
     win = tool_path({"python": sys.executable, "uname": "#!/bin/sh\necho MINGW64_NT-10.0\n", "cygpath": "#!/bin/sh\necho \"$2\"\n",
-                     "powershell.exe": f"#!/bin/sh\necho '{answer}'\n"})
+                     "powershell.exe": f"#!/bin/sh\necho \"$*\" > '{args_log}'\nprintf '%s\\n' '{answer}'\n"})
     r = run_sh(ROOT / "hooks" / "check-deps.sh", win)
     check(r.returncode == 0 and ("FAILED" in r.stdout) == expect_fail and (not expect_fail or "doctor" in r.stdout),
           f"Windows sh-on-PATH check ({answer}): {r.stdout!r}")
+    check(("video2aeo-path-fix: C:\\Git\\bin" in r.stdout) == answer.startswith("found:"),
+          f"the fixable folder must be on its own line for doctor ({answer}): {r.stdout!r}")
+    check("-ShFolder" in args_log.read_text(), f"the hook must pass the folder of its own sh: {args_log.read_text()!r}")
 mcp = L.load_json(ROOT / ".mcp.json")["mcpServers"]["video2aeo"]
 check(mcp["command"] == "sh" and mcp["args"][0].endswith("server/launch.sh"), "mcp.json starts the launcher")
 hooks = L.load_json(ROOT / "hooks" / "hooks.json")["hooks"]
