@@ -67,8 +67,9 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 | Agent | `aeo-reviewer` | Independent review before each approval |
 | MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
-Agents and the local tool server load in **Cowork tasks running on the computer** (Claude desktop app) and in Claude
-Code. In plain chat only the skills load: the user pastes the transcript and the agent follows the same steps.
+Agents and the local tool server load in **Claude Code mode** of the Claude desktop app (toggle at the top left) and in
+the Claude Code CLI. In plain chat only the skills load: the user pastes the transcript and the agent follows the same
+steps. Many scripts run during an episode, so always work in Code mode.
 
 **Long episodes and crashes.** The transcript is edited in chunks (`work/chunks/`), each finished chunk is a file, and
 `episode_status` works out where an episode stands from the files – so after a crash `/video2aeo:resume` continues with
@@ -100,9 +101,19 @@ and topics are required; skipped optional values are saved empty. Set `VIDEO2AEO
      → make sure it is switched on (not "Disabled").
    - Claude Code: `/plugin install video2aeo --marketplace trepechov/video2aeo`
      (or `claude plugin marketplace add trepechov/video2aeo && claude plugin install video2aeo@video2aeo`).
-   Then open a **new** Cowork task: `/video2aeo:` commands appear when you type `/`.
-2. Python 3.9+ on the computer (preinstalled on macOS).
-3. First use: just run any `/video2aeo:` command in a Cowork task. If the one-time setup is not done, the `setup` skill
+   Then **switch the app to Claude Code mode** (the toggle at the top left), create a **new environment** and choose
+   the folder you want to work in (your episodes folder): `/video2aeo:` commands appear when you type `/`.
+2. Requirements on the computer:
+
+   | Needed | Windows | macOS |
+   |---|---|---|
+   | Python 3.9 or newer | python.org/downloads, **tick "Add python.exe to PATH"** (or install from the Microsoft Store) | preinstalled |
+   | Git for Windows (provides Git Bash and `sh`) | git-scm.com, **default options** | not needed |
+
+   Restart the Claude app after installing either one (the PATH is only read at start). The plugin finds `python3`,
+   `python` or `py -3` by itself and checks this at the start of every session; if something is missing, run
+   `/video2aeo:doctor` for the exact steps.
+3. First use: just run any `/video2aeo:` command in Claude Code mode. If the one-time setup is not done, the `setup` skill
    starts by itself and asks for the channel, the description header and footer (links, messages, ads), the brand
    glossary (names, caption mistakes), and shows the AEO guidelines for you to verify, follow or switch off. It writes `~/.video2aeo/` for you –
    no files to edit by hand. Re-run `/video2aeo:setup` any time to change the answers.
@@ -135,21 +146,22 @@ are needed for public videos.
 1. Install Claude (desktop app or Claude Code) and sign in.
 2. Add the marketplace and install the plugin (step 1 above).
 3. Run `/video2aeo:setup` once and answer the questions (channel, header/footer, glossary, guidelines).
-4. Optional: `brew install yt-dlp` for automatic subtitles. Python is preinstalled on macOS.
+4. Optional: `brew install yt-dlp` for automatic subtitles. Python is preinstalled on macOS; on Windows install Python and
+   Git for Windows first (table above).
 
 That is all – then `/video2aeo:episode` with the episode address or transcript.
 
 ## Updating
 
 When a new version is published (the `version` in the repository changes), open Settings → Plugins, refresh the
-marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Cowork task afterwards.
+marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Claude Code environment afterwards.
 Your brand settings in `~/.video2aeo/` are not touched. Settings of the former name (`yt-aeo`) in `~/.yt-aeo/` are
 copied to `~/.video2aeo/` the first time the new plugin runs; the old folder is left in place as a backup and can be
 deleted once everything works.
 
 ## Usage
 
-In a Cowork task with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript `.txt`; then `/video2aeo:wp-article` for the article.
+In Claude Code mode with a working folder: run `/video2aeo:episode` with the video address, or attach the transcript `.txt`; then `/video2aeo:wp-article` for the article.
 
 ## Developing (Claude Code) and testing (Claude Desktop)
 
@@ -168,7 +180,7 @@ Test the installed plugin in the Claude desktop app:
    does both and runs the checks.
 2. `dev/package.sh` → `dist/video2aeo-<version>.plugin`.
 3. Settings → Plugins: remove the old version, upload the new file (or push to GitHub and use **Update**).
-4. Open a Cowork task with a working folder and run `/video2aeo:episode`.
+4. Switch to Claude Code mode, create a new environment with a working folder and run `/video2aeo:episode`.
 
 ### Releasing a new version
 

@@ -6,7 +6,7 @@ description: >
   is already on disk, says where the episode stands and continues with only the remaining steps – never redoing approved
   work and never skipping an approval.
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # /video2aeo:resume – continue an interrupted episode

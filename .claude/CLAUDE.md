@@ -21,9 +21,11 @@ Content language is **Bulgarian**; code, comments and docs are English.
 
 ## Layout
 - `.claude-plugin/plugin.json` – manifest (plugin name `video2aeo`; commands are `/video2aeo:<skill>`).
-- `skills/` – `episode` (`/video2aeo:episode`: transcript → knowledge map → YouTube description), `resume` (continue after a crash, from `episode_status`), `wp-article`, `setup`. Each output command renders only its own file (`outputs` arg of `render_package`/`validate_package`).
+- `skills/` – `doctor`, `episode` (`/video2aeo:episode`: transcript → knowledge map → YouTube description), `resume` (continue after a crash, from `episode_status`), `wp-article`, `setup`. Each output command renders only its own file (`outputs` arg of `render_package`/`validate_package`).
 - `agents/` – `transcript-editor`, `knowledge-mapper`, `aeo-reviewer`. Frontmatter `description` must be a YAML block scalar (`|`).
-- `.mcp.json` + `server/server.py` – local stdio MCP server `video2aeo` (stdlib-only Python).
+- `.mcp.json` + `server/launch.sh` (finds Python via `server/find-python.sh`) + `server/server.py` – local stdio MCP server `video2aeo` (stdlib-only Python).
+- `hooks/` – only a fail-open, Python-free SessionStart dependency check (`check-deps.sh`). Never add blocking `PreToolUse` hooks
+  (`dev/release.sh` fails on them). `skills/doctor` (`/video2aeo:doctor`) diagnoses Python/Git without the helper.
 - `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
   `VIDEO2AEO_HOME`). `scripts/aeo_pipeline.py` – transcript chunks, merge, `progress.json`, `episode_status` (state is derived from files). `scripts/aeo_net.py` – optional YouTube + WordPress network calls. `scripts/aeo.py` – CLI.
 - Episode folders: one `episodes_root` (setup → `~/.video2aeo/config.json`) → `<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/`;
@@ -43,12 +45,12 @@ Content language is **Bulgarian**; code, comments and docs are English.
 4. Promo text comes only from the approved brand config; opinions and forecasts are always attributed.
 5. General guidelines ship with the plugin; brand/user instructions come from `~/.video2aeo/guidelines*.md` and may
    extend or override them, but never the code-enforced rules.
-6. No top-level `bin/` folder (claude.ai/Cowork refuse such plugins). Agents, hooks and local MCP only load in Cowork on the user's computer or in Claude Code.
+6. No top-level `bin/` folder (claude.ai refuses such plugins). Agents, hooks and local MCP only load in Claude Code mode of the desktop app (Cowork no longer exists) or in the CLI.
 7. Runtime Python must stay stdlib-only and run on Python 3.9 (youtube-transcript-api / yt-dlp are optional, imported lazily).
 
 ## Dev environment
 Develop here in Claude Code on the local Mac (repo root = plugin root); test the installed plugin in the Claude desktop
-app. Claude Code loads skills, agents and the local MCP server via `--plugin-dir`, so iterate here; use Desktop Cowork
+app. Claude Code loads skills, agents and the local MCP server via `--plugin-dir`, so iterate here; use the Desktop app in Code mode
 for install/runtime checks. Opening Claude Code in the repo without `--plugin-dir` also tries `.mcp.json` as a project
 server and fails (`${CLAUDE_PLUGIN_ROOT}` unset) – that is expected.
 
@@ -65,9 +67,10 @@ Iterate in Claude Code: `claude --plugin-dir .`
 1. Bump `version` in `.claude-plugin/plugin.json` (Desktop may keep a stale copy of the same version).
 2. `dev/package.sh` → `dist/video2aeo-<version>.plugin` (until the GitHub marketplace is set up).
 3. Desktop → Settings → Plugins: remove the old plugin, upload the new file (or push and click Update).
-4. New **Cowork** task with a working folder → `/video2aeo:episode` + transcript `.txt` (plain chat loads skills only).
+4. Switch the app to **Code** mode (toggle top left), new environment with a working folder → `/video2aeo:episode` + transcript `.txt` (plain chat loads skills only).
 
-The desktop app runs `.mcp.json`'s `python3` with the GUI PATH (`/usr/bin/python3`, 3.9 here), not Homebrew's (3.14).
+The desktop app runs `.mcp.json` (`sh server/launch.sh`) with the GUI PATH; the launcher picks the first working Python >= 3.9 of
+`python3`, `python`, `py -3` (on this Mac `/usr/bin/python3`, 3.9, not Homebrew's 3.14). On Windows `sh` comes from Git for Windows.
 
 ## Status (22 Oct 2026)
 v0.1 moved from a cloud session to the local Mac and made brand-neutral (plugin named `yt-aeo`). 0.4.0 renamed it to **Video2AEO** (`video2aeo`, settings `~/.video2aeo/`); the code still reads
@@ -75,8 +78,10 @@ the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing. 
 `brand.formats.<id>` profiles asked one question at a time in setup, a length-based coverage plan (`coverage_plan`), and
 teaser/boilerplate markers in the edited transcript.
 0.6.0 added the episodes root + series folders + workspace check (see `docs/plans/2026-10-22-001-…`).
+0.8.0 made Windows installs work: `sh server/launch.sh` finds `python3`/`python`/`py -3`, a fail-open SessionStart check, `/video2aeo:doctor`,
+Git for Windows documented as a requirement, Code mode (not Cowork) as the only route. **Not yet tested on Windows** (does the app's PATH include Git's `usr\bin`?).
 Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
-Desktop Cowork (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
+Desktop Code mode (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
 
 ## Next steps (full list: `docs/plugin-build-plan.md` §3)
 1. Publish on GitHub + marketplace; install in Desktop from it.

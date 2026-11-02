@@ -436,6 +436,48 @@ check(L.load_json(L.USER_DIR / "config.json")["models"]["profile"] == "quality",
 ok = L.save_setup(models={})
 check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.load_config(), "models {} resets to defaults")
 
+# --- launcher and SessionStart check without python3 on PATH (Windows-like) --------------------------
+def tool_path(extra):
+    """A PATH holding only the POSIX tools the scripts use, plus `extra` (name -> executable or script text)."""
+    bindir = Path(tempfile.mkdtemp(prefix="v2a-path-"))
+    for tool in ("sh", "tr", "dirname", "cat"):
+        (bindir / tool).symlink_to(shutil.which(tool))
+    for name, target in extra.items():
+        if target is None:
+            continue
+        if target.startswith("#!"):
+            (bindir / name).write_text(target)
+            (bindir / name).chmod(0o755)
+        else:
+            (bindir / name).symlink_to(target)
+    return bindir
+
+def run_sh(script, bindir, stdin=""):
+    env = {"PATH": str(bindir), "HOME": str(TMP), "VIDEO2AEO_HOME": str(TMP / "no-home")}
+    return subprocess.run([str(bindir / "sh"), str(script)], input=stdin, capture_output=True, text=True,
+                          env=env, timeout=30)
+
+INIT = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'
+only_python = tool_path({"python": sys.executable})                       # `python` exists, `python3` does not
+r = run_sh(ROOT / "server" / "launch.sh", only_python, INIT)
+check(r.returncode == 0 and '"video2aeo"' in r.stdout, f"launcher must fall back to `python`: {r.stdout!r} {r.stderr!r}")
+store_stub = tool_path({"python": "#!/bin/sh\nexit 9\n"})              # Microsoft Store stub: opens the Store, fails
+r = run_sh(ROOT / "server" / "launch.sh", store_stub, INIT)
+check(r.returncode == 1 and "Python 3.9" in r.stderr, f"launcher with no usable Python must explain: {r.stderr!r}")
+for label, bindir in (("python", only_python), ("stub", store_stub), ("none", tool_path({}))):
+    r = run_sh(ROOT / "hooks" / "check-deps.sh", bindir)
+    check(r.returncode == 0, f"check-deps.sh must always exit 0 ({label}): {r.returncode}")
+    check(("FAILED" in r.stdout) == (label != "python"), f"check-deps.sh message ({label}): {r.stdout!r}")
+(TMP / "no-home").mkdir(exist_ok=True)
+run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
+(TMP / "no-home" / "last_python").write_text("/old/python\n")
+r = run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
+check("changed" in r.stdout and r.returncode == 0, f"changed Python must be reported: {r.stdout!r}")
+mcp = L.load_json(ROOT / ".mcp.json")["mcpServers"]["video2aeo"]
+check(mcp["command"] == "sh" and mcp["args"][0].endswith("server/launch.sh"), "mcp.json starts the launcher")
+hooks = L.load_json(ROOT / "hooks" / "hooks.json")["hooks"]
+check(set(hooks) == {"SessionStart"}, "plugin ships only a SessionStart hook (no blocking PreToolUse guards)")
+
 if "--write-article" in sys.argv:
     out = Path(sys.argv[sys.argv.index("--write-article") + 1])
     out.parent.mkdir(parents=True, exist_ok=True)

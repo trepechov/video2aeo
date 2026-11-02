@@ -15,12 +15,12 @@ user's computer in `~/.video2aeo/`, never in this repo. Developers keep brand fi
 
 | Finding | Consequence |
 |---|---|
-| In the Claude desktop app, plugin **skills** load everywhere, but **agents, hooks and local MCP servers** load only in **Cowork tasks on the user's computer**; plain chat ignores them. | Target Cowork on the marketer's laptop; keep a skills-only path (paste transcript) for chat. |
-| **Claude Code** (`claude --plugin-dir .`) loads skills, agents and the local MCP server too. | Develop and iterate in Claude Code; use Desktop Cowork only for install/runtime verification before marketer rollout. |
+| In the Claude desktop app, plugin **skills** load everywhere, but **agents, hooks and local MCP servers** load only in **Claude Code mode** of the desktop app (the Cowork mode is gone) and the CLI; plain chat ignores them. | Target Code mode on the user's computer; keep a skills-only path (paste transcript) for chat. |
+| **Claude Code** (`claude --plugin-dir .`) loads skills, agents and the local MCP server too. | Develop and iterate in Claude Code; use the Desktop app in Code mode only for install/runtime verification before marketer rollout. |
 | Opening Claude Code in the repo also reads `.mcp.json` as a *project* server, where `${CLAUDE_PLUGIN_ROOT}` is not set – it fails to connect (seen 12 Oct 2026). | Harmless; use the plugin-loaded server (`--plugin-dir .`). |
-| Plugins with a top-level `bin/` folder can't be installed in claude.ai / Cowork. | Scripts live in `scripts/` and `server/`. |
-| Cowork doesn't prompt for plugin `userConfig`; servers referencing missing options are ignored. | Brand, glossary, guidelines and credentials live in `~/.video2aeo/`, not in plugin config. |
-| The desktop app launches `.mcp.json`'s bare `python3` with the GUI PATH. On a Mac with Homebrew, Terminal's `python3` (e.g. 3.14) differs from `/usr/bin/python3` (3.9). | Runtime code must run on Python 3.9 (verified). Optional deps go into the interpreter Desktop uses (`/usr/bin/python3 -m pip install --user …`). |
+| Plugins with a top-level `bin/` folder can't be installed in claude.ai. | Scripts live in `scripts/` and `server/`. |
+| The desktop app doesn't prompt for plugin `userConfig`; servers referencing missing options are ignored. | Brand, glossary, guidelines and credentials live in `~/.video2aeo/`, not in plugin config. |
+| The desktop app launches `.mcp.json` with the GUI PATH; a bare `python3` fails on Windows (python.org installs only `python` and `py`). Since 0.8.0 `sh server/launch.sh` tries `python3`, `python`, `py -3` (Windows: `sh` from Git for Windows; a SessionStart hook and `/video2aeo:doctor` check this). On a Mac with Homebrew, Terminal's `python3` (e.g. 3.14) differs from `/usr/bin/python3` (3.9). | Runtime code must run on Python 3.9 (verified). Optional deps go into the interpreter Desktop uses (`/usr/bin/python3 -m pip install --user …`). |
 | YouTube blocks caption fetching from cloud IPs; `youtube-transcript-api` works from home/office IPs. | Automatic download is optional and local-only; the default input is a transcript file. |
 | YouTube chapters: first at 00:00, ≥ 3, ascending, each ≥ 10 s. Description ≤ 5,000 chars, no `<` `>`. | Enforced by code, not by the LLM. |
 | Gutenberg is picky: hand-written block markup often triggers "unexpected content". | Markup is generated deterministically and checked with WordPress's own block validator (`dev/`). |

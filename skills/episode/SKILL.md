@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
@@ -98,7 +98,7 @@ must be added by hand and offer the three ways from the returned `fallback` – 
 transcript" copy, or an online YouTube-transcript service (paste the video address, copy/download the result) – then
 wait. A transcript pasted in the chat can be saved to a file first and imported the same way.
 
-If the tools are unavailable (plain chat, not a Cowork task on the computer), ask the user to paste or attach the
+If the tools are unavailable (plain chat, not Claude Code mode on the computer), ask the user to paste or attach the
 transcript and follow the same steps, producing the output by the template in `instructions/youtube-description.md`.
 
 ## Step 2 – Edited transcript (in chunks, resumable)

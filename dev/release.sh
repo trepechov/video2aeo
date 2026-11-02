@@ -20,6 +20,10 @@ if [ -f private/brand-terms.txt ]; then
   fi
 fi
 
+if grep -q '"PreToolUse"' hooks/hooks.json 2>/dev/null || git ls-files | grep -q '_guard\.py$'; then
+  echo "blocking hooks found (PreToolUse entry or *_guard.py): the plugin ships only fail-open hooks"; exit 1
+fi
+
 echo "== bump to $new"
 python3 - "$new" <<'PY'
 import json, re, sys

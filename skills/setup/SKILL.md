@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -42,11 +42,13 @@ them would look like a requirement. Never show `optional` results here.
 
 - **The tool is not available or the call fails** – the plugin's helper program did not start, most often because
   Python is missing or too old. Say so, and guide the user by operating system, then ask them to restart the
-  Claude desktop app and start a new Cowork task:
+  Claude app, work in **Claude Code** mode (toggle at the top left) with a new environment, and run `/video2aeo:doctor`
+  to check the computer without the helper:
   - macOS: download the "macOS 64-bit universal2 installer" from python.org/downloads and open it (double-click,
     Continue, Install).
-  - Windows: install from python.org/downloads and **tick "Add python.exe to PATH"** on the first screen.
-    If `python3` is still not found, an admin changes `"command"` in the plugin's `.mcp.json` to `python`.
+  - Windows: install Python from python.org/downloads and **tick "Add python.exe to PATH"** on the first screen, and
+    install **Git for Windows** (git-scm.com, default options – it provides the `sh` the plugin starts with). The
+    plugin finds `python3`, `python` or `py -3` by itself; no file needs editing.
 - **`python.ok` is false** (older than 3.9) – same installer steps, then restart the app.
 - **`user_dir_writable` is false** – ask the user to pick a different home folder or contact IT; the brand
   settings cannot be saved otherwise.
@@ -65,8 +67,8 @@ Then call `setup_status` and use it like this:
   saving again keeps the damaged copy as `<name>.broken` and writes a fresh file from the answers.
 - **`warnings`** – mention each one when you reach the related question.
 
-If the tools are unavailable (plain chat, not a Cowork task with a working folder), run the interview anyway, then
-tell the user the answers can only be saved from a Cowork task, and list them so they are not lost.
+If the tools are unavailable (plain chat, not Claude Code mode with a working folder), run the interview anyway, then
+tell the user the answers can only be saved in Claude Code mode, and list them so they are not lost.
 
 ## 1. Language and the channel
 
