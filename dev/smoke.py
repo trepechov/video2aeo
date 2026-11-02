@@ -48,6 +48,37 @@ env = L.check_environment()
 check(env["ok"] and env["python"]["ok"], f"check_environment not ok: {env['problems']}")
 check(not L.USER_DIR.exists(), "check_environment must not create the settings folder")
 
+# --- subtitle tools: offered, never installed silently; the installer is exercised with pip mocked ------------
+import aeo_net as N
+import importlib.util as _iu
+real_find, real_run = _iu.find_spec, N.subprocess.run
+check(env["missing_subtitle_tools"] == [p for m, p in L.SUBTITLE_PACKAGES.items() if real_find(m) is None],
+      "check_environment must list the missing subtitle packages")
+_iu.find_spec = lambda name, *a, **k: None if name in L.SUBTITLE_PACKAGES else real_find(name, *a, **k)
+try:
+    env_missing = L.check_environment()
+    check(env_missing["missing_subtitle_tools"] == ["youtube-transcript-api", "yt-dlp"]
+          and "pip" in env_missing["install_command"] and sys.executable in env_missing["install_command"],
+          f"install_command must use this interpreter: {env_missing['install_command']}")
+    calls = []
+    N.subprocess.run = lambda cmd, **k: calls.append(cmd) or type("R", (), {"returncode": 1, "stdout": "", "stderr": "no network"})()
+    res = N.install_subtitle_tools()
+    check(calls and calls[0][:4] == [sys.executable, "-m", "pip", "install"] and "youtube-transcript-api" in calls[0],
+          f"pip must run in this interpreter: {calls}")
+    check(res["ok"] is False and res["still_missing"] == ["youtube-transcript-api", "yt-dlp"] and "manual_command" in res,
+          f"failed install must report the manual command: {res}")
+    real_which, real_mod = N.shutil.which, sys.modules.get("youtube_transcript_api")
+    N.shutil.which = lambda name: None
+    sys.modules["youtube_transcript_api"] = None  # makes `import youtube_transcript_api` raise ImportError, no network
+    fail = N.fetch_transcript("https://www.youtube.com/watch?v=abcdefghijk", TMP / "t", "bg")
+    check(fail["ok"] is False and fail.get("can_auto_install") is True, f"missing tools must set can_auto_install: {fail}")
+finally:
+    _iu.find_spec, N.subprocess.run, N.shutil.which = real_find, real_run, real_which
+    if real_mod is None:
+        sys.modules.pop("youtube_transcript_api", None)
+    else:
+        sys.modules["youtube_transcript_api"] = real_mod
+
 # --- legacy ~/.yt-aeo is copied once to ~/.video2aeo (HOME points at a temp dir, no env override) --------
 import subprocess
 fake_home = TMP / "legacy-home"

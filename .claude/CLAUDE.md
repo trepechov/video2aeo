@@ -47,6 +47,7 @@ Content language is **Bulgarian**; code, comments and docs are English.
    extend or override them, but never the code-enforced rules.
 6. No top-level `bin/` folder (claude.ai refuses such plugins). Agents, hooks and local MCP only load in Claude Code mode of the desktop app (Cowork no longer exists) or in the CLI.
 7. Runtime Python must stay stdlib-only and run on Python 3.9 (youtube-transcript-api / yt-dlp are optional, imported lazily).
+   They are installed only through the `install_subtitle_tools` tool, after the user's yes (setup step 0 / `fetch_transcript` `can_auto_install`) – never silently.
 
 ## Dev environment
 Develop here in Claude Code on the local Mac (repo root = plugin root); test the installed plugin in the Claude desktop
@@ -82,6 +83,7 @@ teaser/boilerplate markers in the edited transcript.
 Git for Windows documented as a requirement, Code mode (not Cowork) as the only route. First Windows run (2 Nov 2026): Git's default install leaves `sh` off the PATH, so the helper did not start; 0.8.1 adds `server/path-check.ps1` / `fix-path.ps1`
 (registry-PATH check in the SessionStart hook and `/video2aeo:doctor`, fix only with the user's OK), `read_setup_bundle` (import an earlier install from a folder/zip)
 and `unrecognised_keys` in `save_setup`. A single `.mcp.json` cannot avoid `sh` on Windows (no per-OS keys; only `${VAR}`/`${VAR:-x}` expansion).
+0.8.2: the subtitle downloader is part of setup (`check_environment.missing_subtitle_tools` / `install_command`, `install_subtitle_tools`; `fetch_transcript` runs yt-dlp as `python -m yt_dlp` so a Windows pip install works, and returns `can_auto_install`).
 Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
 Desktop Code mode (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
 

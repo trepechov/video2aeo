@@ -4,6 +4,7 @@ YouTube blocks caption requests from cloud IPs, so these calls must stay local.
 
   video_info(url)                       – title, channel, thumbnail, upload date, duration
   fetch_transcript(url, out_dir, lang)  – youtube-transcript-api -> yt-dlp -> clear error
+  install_subtitle_tools()              – pip-installs the two optional subtitle packages (only after the user said yes)
   wp_create_draft(ep_dir, brand, cfg)   – WordPress REST, status=draft ONLY
 """
 from __future__ import annotations
@@ -12,8 +13,10 @@ import base64
 import json
 import os
 import re
+import importlib.util
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.parse
@@ -76,9 +79,43 @@ def _yt_cookie_args() -> list:
     return []
 
 
+def install_subtitle_tools() -> dict:
+    """pip-install youtube-transcript-api and yt-dlp into the interpreter this helper runs in. Network + disk write:
+    the caller must have the user's explicit yes. Never raises; returns what happened and the new environment state."""
+    importlib.invalidate_caches()
+    todo = [pkg for mod, pkg in L.SUBTITLE_PACKAGES.items() if importlib.util.find_spec(mod) is None]
+    if not todo:
+        return {"ok": True, "installed": [], "message": "Both subtitle tools are already installed."}
+    cmd = L.pip_install_args(todo)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        ok, tail = res.returncode == 0, (res.stdout + res.stderr).strip()[-600:]
+    except (OSError, subprocess.SubprocessError) as ex:
+        ok, tail = False, f"{type(ex).__name__}: {ex}"
+    importlib.invalidate_caches()
+    still = [pkg for mod, pkg in L.SUBTITLE_PACKAGES.items() if importlib.util.find_spec(mod) is None]
+    out = {"ok": ok and not still, "installed": [p for p in todo if p not in still], "still_missing": still,
+           "log_tail": tail}
+    if still:
+        out["manual_command"] = L.pip_install_command(still)
+    else:
+        out["message"] = "Installed. The next fetch_transcript call uses them; no restart is needed."
+    return out
+
+
+def _ytdlp_cmd() -> list | None:
+    """yt-dlp as a command: the module of this very interpreter first (a pip --user install puts the .exe in a Scripts
+    folder that is usually not on PATH on Windows), then a yt-dlp on PATH (e.g. brew)."""
+    if importlib.util.find_spec("yt_dlp") is not None:
+        return [sys.executable, "-m", "yt_dlp"]
+    exe = shutil.which("yt-dlp")
+    return [exe] if exe else None
+
+
 def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
     vid = L.video_id_from_url(url)
     errors = []
+    missing = []
     # 1) youtube-transcript-api (v1.x instance API, fallback to 0.x class API)
     try:
         from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
@@ -92,14 +129,15 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
             return L.write_raw_transcript(segs, out_dir, "youtube-transcript-api")
         errors.append("youtube-transcript-api returned no segments")
     except ImportError:
-        errors.append("youtube-transcript-api not installed (pip install youtube-transcript-api)")
+        missing.append("youtube-transcript-api")
+        errors.append("youtube-transcript-api not installed")
     except Exception as ex:  # noqa: BLE001
         errors.append(f"youtube-transcript-api: {type(ex).__name__}: {str(ex)[:300]}")
     # 2) yt-dlp, if present
-    ytdlp = shutil.which("yt-dlp")
+    ytdlp = _ytdlp_cmd()
     if ytdlp:
         with tempfile.TemporaryDirectory() as tmp:
-            cmd = [ytdlp, *_yt_cookie_args(), "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
+            cmd = [*ytdlp, *_yt_cookie_args(), "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
                    "--sub-format", "vtt", "-o", os.path.join(tmp, "%(id)s.%(ext)s"), L.watch_url(vid)]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             vtts = sorted(Path(tmp).glob("*.vtt"))
@@ -108,14 +146,20 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
                 return L.write_raw_transcript(segs, out_dir, f"yt-dlp:{vtts[0].name}")
             errors.append(f"yt-dlp: {res.stderr.strip()[-300:]}")
     else:
+        missing.append("yt-dlp")
         errors.append("yt-dlp not found")
-    return {"ok": False, "errors": errors,
-            "fallback": "Automatic download failed (YouTube may be blocking this computer's IP, or yt-dlp is not "
-                        "installed: brew install yt-dlp). Add the transcript by hand, any of: (1) YouTube Studio → "
-                        "Subtitles → download .vtt/.srt; (2) the watch page → '…' → Show transcript → copy the text; "
-                        "(3) an online YouTube-transcript service – paste the video address there and copy or "
-                        "download the result. Save it as a .txt/.vtt/.srt file (or paste it in the chat), then call "
-                        "import_transcript with the file."}
+    out = {"ok": False, "errors": errors,
+           "fallback": "Automatic download failed (YouTube may be blocking this computer's IP, or the download tools are "
+                       "not installed). Add the transcript by hand, any of: (1) YouTube Studio → "
+                       "Subtitles → download .vtt/.srt; (2) the watch page → '…' → Show transcript → copy the text; "
+                       "(3) an online YouTube-transcript service – paste the video address there and copy or "
+                       "download the result. Save it as a .txt/.vtt/.srt file (or paste it in the chat), then call "
+                       "import_transcript with the file."}
+    if len(missing) == 2:
+        # Neither tool is there: the failure is the missing install, not YouTube. The skill offers install_subtitle_tools.
+        out["missing_subtitle_tools"] = missing
+        out["can_auto_install"] = True
+    return out
 
 # ----------------------------------------------------------------------------
 # WordPress draft

@@ -39,6 +39,13 @@ TOOLS = [
                     "they approve pass it to save_setup. Used by the setup skill when the user has an earlier setup.",
      "inputSchema": {"type": "object", "required": ["path"], "properties": {
          "path": {"type": "string", "description": "Absolute path of a folder or a .zip holding the earlier files"}}}},
+    {"name": "install_subtitle_tools",
+     "description": "Install the two optional subtitle downloaders (youtube-transcript-api, yt-dlp) into the Python this plugin runs on, "
+                    "with pip (no admin rights, no restart). Writes to the user's computer and downloads from the internet: ONLY call it "
+                    "after the user said yes to „install the subtitle downloader“. Returns ok, what was installed and, on failure, "
+                    "the exact command to run by hand. Offered by the setup skill and by /video2aeo:episode when fetch_transcript "
+                    "reports can_auto_install.",
+     "inputSchema": {"type": "object", "properties": {}}},
     {"name": "save_setup",
      "description": "Write the user-approved setup answers to ~/.video2aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
                     "brand/glossary are merged over existing files; omitted arguments keep what is saved; skipped optional fields "
@@ -138,6 +145,8 @@ def call(name, args):
         return L.setup_status()
     if name == "check_environment":
         return L.check_environment()
+    if name == "install_subtitle_tools":
+        return N.install_subtitle_tools()
     if name == "read_setup_bundle":
         return L.read_setup_bundle(args.get("path"))
     if name == "save_setup":

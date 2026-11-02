@@ -5,7 +5,7 @@ description: >
   missing, "do not connect", that Python or Git is not found, or that the plugin worked before and stopped. It checks the
   computer without needing the plugin's own helper program and tells the user exactly what to install or fix.
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
 ---
 
 # /video2aeo:doctor – why do the video2aeo tools not start?

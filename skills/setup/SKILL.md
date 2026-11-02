@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -37,8 +37,9 @@ original request and continue it.
 
 Call `check_environment` before asking anything. Report the result in plain words, as a short checklist with
 **only the two things the plugin needs** (✅ / ❌): Python found and its version, and the settings folder is writable.
-Do not list the subtitle downloader or WordPress in this checklist – they are optional extras (section 8), a ❌ next to
-them would look like a requirement. Never show `optional` results here.
+Do not list the subtitle downloader or WordPress in this checklist – a ❌ next to them would look like a requirement.
+Never show `optional` results in it. The subtitle downloader gets its own one-question offer, right after the checklist
+(see **Subtitle downloader** below). WordPress stays an optional extra (section 8).
 
 - **The tool is not available or the call fails** – the plugin's helper program did not start, most often because
   Python is missing or too old. Say so, and guide the user by operating system, then ask them to restart the
@@ -55,6 +56,18 @@ them would look like a requirement. Never show `optional` results here.
   settings cannot be saved otherwise.
 
 Never continue to the interview while Python itself is failing – the files could not be saved.
+
+**Subtitle downloader (one question, only when Python and the settings folder are fine).** If
+`check_environment.automatic_subtitles` is false, offer to install it now, so the first episode does not stop at the
+transcript step. Plain words, one sentence of why: „За да сваляме субтитрите на епизодите автоматично, са нужни две
+малки помощни програми (youtube-transcript-api и yt-dlp). Да ги инсталирам ли сега? Не са нужни права на администратор и
+не пипат нищо друго.“ – *choice*, recommended „Да, инсталирай“, other „Не, ще качвам субтитрите ръчно“.
+- **Yes** → call `install_subtitle_tools`. `ok: true` → say it is done, no restart needed. `ok: false` → say in one
+  sentence that it did not work, show `manual_command` for the user (or a colleague) to run in PowerShell/Terminal, and
+  carry on with the interview; manual transcripts always work.
+- **No** → carry on and never ask again during this setup. Do not nag in later runs either: `/video2aeo:episode` offers
+  it again only when it actually needs the downloader.
+- Already installed (`automatic_subtitles` true) → say nothing, or one ✅ line if the user asks.
 
 Then call `setup_status` and use it like this:
 - **`current`** holds what is already saved. Pre-fill every question with it and ask only "keep or change?" –
@@ -285,11 +298,10 @@ Offer these only if the user asks, or after the first episode:
   Show the result and save it with `save_setup(models={"profile": "…", "overrides": {"<operation>": "…"}})`; `models={}` goes
   back to the defaults. Without this request, never ask about models and never save them.
 
-- **Automatic subtitle download** – not needed: the user can always attach the transcript `.txt` (YouTube Studio →
-  Subtitles → download, or copy „Show transcript“). No YouTube login or API key is needed for public videos. If the
-  user wants it, ask them to get a colleague who is comfortable with Terminal to run
-  `/usr/bin/python3 -m pip install --user youtube-transcript-api` (or `brew install yt-dlp`), then restart the
-  Claude desktop app.
+- **Automatic subtitle download** – normally installed in section 0 (`install_subtitle_tools`). If the user skipped it
+  and now wants it, or asks to reinstall/repair it, call `install_subtitle_tools` after their yes. Not needed for the
+  pipeline: the user can always attach the transcript `.txt` (YouTube Studio → Subtitles → download, or copy
+  „Show transcript“). No YouTube login or API key is needed for public videos.
   - If YouTube answers „Sign in to confirm you're not a bot“ or blocks the address, add a logged-in browser to
     `~/.video2aeo/config.json`: `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
     an exported `cookies.txt`). Any YouTube account works, it need not be the channel's; a separate account is safer

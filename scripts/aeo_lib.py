@@ -533,6 +533,22 @@ def setup_status() -> dict:
     }
 
 
+SUBTITLE_PACKAGES = {"youtube_transcript_api": "youtube-transcript-api", "yt_dlp": "yt-dlp"}
+
+
+def pip_install_args(packages: list) -> list:
+    """pip arguments for the interpreter running this helper (the one the plugin really uses).
+    `--user` outside a virtualenv so no admin rights are needed; inside one it would be refused."""
+    in_venv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+    return [sys.executable, "-m", "pip", "install", "--upgrade", *([] if in_venv else ["--user"]), *packages]
+
+
+def pip_install_command(packages: list) -> str:
+    """The same command as a copy-paste line for the manual fallback (quoted path, PowerShell and sh)."""
+    a = pip_install_args(packages)
+    return f'"{a[0]}" ' + " ".join(a[1:])
+
+
 def check_environment() -> dict:
     """What the plugin needs on this computer. Runs inside the interpreter that the desktop app launches.
     Read-only: checks that the settings folder (or its nearest existing parent) is writable without creating it."""
@@ -546,6 +562,7 @@ def check_environment() -> dict:
         "yt_dlp": "subtitle download, second route",
     }
     optional_status = {m: importlib.util.find_spec(m) is not None for m in optional}
+    missing = [pkg for mod, pkg in SUBTITLE_PACKAGES.items() if not optional_status.get(mod)]
     problems = []
     if not py_ok:
         problems.append(f"Python {platform.python_version()} is too old – 3.9 or newer is needed.")
@@ -560,6 +577,9 @@ def check_environment() -> dict:
         "user_dir_writable": writable,
         "optional": {m: {"installed": optional_status[m], "enables": optional[m]} for m in optional},
         "automatic_subtitles": any(optional_status.values()),
+        # Packages the subtitle download still lacks; the `install_subtitle_tools` tool installs them for the user.
+        "missing_subtitle_tools": missing,
+        "install_command": pip_install_command(missing) if missing else "",
     }
 
 

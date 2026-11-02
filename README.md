@@ -65,7 +65,7 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 | Agent | `transcript-editor` | Raw transcript → edited transcript |
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
 | Agent | `aeo-reviewer` | Independent review before each approval |
-| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `get_video_info`, `fetch_transcript`, `wp_push_draft` |
+| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `install_subtitle_tools`, `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
 Agents and the local tool server load in **Claude Code mode** of the Claude desktop app (toggle at the top left) and in
 the Claude Code CLI. In plain chat only the skills load: the user pastes the transcript and the agent follows the same
@@ -118,19 +118,18 @@ and topics are required; skipped optional values are saved empty. Set `VIDEO2AEO
    glossary (names, caption mistakes), and shows the AEO guidelines for you to verify, follow or switch off. It writes `~/.video2aeo/` for you –
    no files to edit by hand. Re-run `/video2aeo:setup` any time to change the answers.
 
-### Automatic subtitle download (optional, one-time, ~2 minutes)
+### Automatic subtitle download (optional, offered during setup)
 
 Without it you attach the transcript `.txt` (YouTube Studio → Subtitles → download) – that always works. To let the
-plugin fetch the subtitles from the video address, install one downloader. No YouTube API key and no channel access
-are needed for public videos.
+plugin fetch the subtitles from the video address it needs two small Python packages, `youtube-transcript-api` and
+`yt-dlp`. No YouTube API key and no channel access are needed for public videos.
 
-1. **Recommended – `yt-dlp`** (a standalone program, no Python version to worry about):
-   ```bash
-   brew install yt-dlp
-   ```
-   Alternative, a Python package: `python3 -m pip install --user youtube-transcript-api` – use the same `python3`
-   the plugin runs with (in the Claude desktop app on macOS this is `/usr/bin/python3`, not Homebrew's).
-2. Restart the Claude app (or start a new Claude Code session) so it sees the new program.
+1. **Nothing to do by hand.** `/video2aeo:setup` checks for them and asks one question; on „yes“ it installs them with
+   pip into the Python the plugin itself runs on (the `install_subtitle_tools` tool, no admin rights, no restart).
+   `/video2aeo:episode` makes the same offer if the first run finds them missing.
+2. **Manual fallback** – the offer prints the exact command if pip fails. It is the plugin's own interpreter, so on
+   Windows it looks like `"C:\…\Python314\python.exe" -m pip install --user youtube-transcript-api yt-dlp`
+   (`check_environment` returns it as `install_command`). A global `brew install yt-dlp` also works on macOS.
 3. Only if YouTube answers „Sign in to confirm you're not a bot“ or blocks your address: let `yt-dlp` use a logged-in
    browser. Any YouTube account works, it does not have to be the channel's (a separate account is safer – automated
    use can get an account flagged). Create `~/.video2aeo/config.json` (`chmod 600`):
@@ -146,7 +145,7 @@ are needed for public videos.
 1. Install Claude (desktop app or Claude Code) and sign in.
 2. Add the marketplace and install the plugin (step 1 above).
 3. Run `/video2aeo:setup` once and answer the questions (channel, header/footer, glossary, guidelines).
-4. Optional: `brew install yt-dlp` for automatic subtitles. Python is preinstalled on macOS; on Windows install Python and
+4. Automatic subtitles are offered by the setup. Python is preinstalled on macOS; on Windows install Python and
    Git for Windows first (table above).
 
 That is all – then `/video2aeo:episode` with the episode address or transcript.

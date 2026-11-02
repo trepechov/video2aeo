@@ -7,7 +7,7 @@ description: >
   (work/episode.json) → AEO YouTube description with chapters, with two human approval steps. The WordPress article is
   a separate follow-up command (/video2aeo:wp-article).
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
 ---
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
@@ -92,8 +92,12 @@ transcript") or attaches it. Import it with `import_transcript(file, episode_dir
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/aeo.py import <file> <episode_dir>`); it lands in `work/`.
 
 Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir)`. It tries
-youtube-transcript-api, then `yt-dlp` (install: `brew install yt-dlp`; optional browser cookies in
-`~/.video2aeo/config.json`). If both fail, do not retry endlessly: tell the user in one short message that the transcript
+youtube-transcript-api, then `yt-dlp` (optional browser cookies in `~/.video2aeo/config.json`).
+- **`can_auto_install: true`** – neither tool is installed, so YouTube was never asked. Do not make the user open a
+  terminal: ask once, in plain words, „Липсват две малки помощни програми за автоматично сваляне на субтитри. Да ги
+  инсталирам ли сега?“ (*choice*, recommended „Да“). On yes call `install_subtitle_tools`; on `ok: true` call
+  `fetch_transcript` again once. On no, or `ok: false` (show `manual_command` in one line), use the manual route below.
+- If both tools are installed and both fail, do not retry endlessly: tell the user in one short message that the transcript
 must be added by hand and offer the three ways from the returned `fallback` – YouTube Studio subtitles download, "Show
 transcript" copy, or an online YouTube-transcript service (paste the video address, copy/download the result) – then
 wait. A transcript pasted in the chat can be saved to a file first and imported the same way.
