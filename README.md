@@ -108,7 +108,7 @@ and topics are required; skipped optional values are saved empty. Set `VIDEO2AEO
    | Needed | Windows | macOS |
    |---|---|---|
    | Python 3.9 or newer | python.org/downloads, **tick "Add python.exe to PATH"** (or install from the Microsoft Store) | preinstalled |
-   | Git for Windows (provides Git Bash and `sh`) | git-scm.com, **default options** | not needed |
+   | Git for Windows (provides `sh`) | git-scm.com, default options; its default leaves `sh` off the PATH – run `/video2aeo:doctor` once, it adds the folder (with your OK) | not needed |
 
    Restart the Claude app after installing either one (the PATH is only read at start). The plugin finds `python3`,
    `python` or `py -3` by itself and checks this at the start of every session; if something is missing, run

@@ -18,7 +18,7 @@ python_missing_text() {
   cat <<'TXT'
 video2aeo needs Python 3.9 or newer, and none was found.
   Windows: install it from python.org/downloads and tick "Add python.exe to PATH" (or install Python from the
-           Microsoft Store), install Git for Windows with the default options (git-scm.com), then restart the Claude app.
+           Microsoft Store), install Git for Windows (git-scm.com) and run /video2aeo:doctor once, then restart the Claude app.
   macOS:   install the "macOS 64-bit universal2 installer" from python.org/downloads, then restart the Claude app.
 Then work in Claude Code mode (toggle at the top left of the Claude app).
 TXT

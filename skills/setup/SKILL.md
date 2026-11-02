@@ -7,7 +7,7 @@ description: >
   missing dependency or missing credentials. It interviews the user and writes the brand files – no manual file
   editing and no terminal needed.
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # One-time setup for the AEO Episode Agent
@@ -47,8 +47,9 @@ them would look like a requirement. Never show `optional` results here.
   - macOS: download the "macOS 64-bit universal2 installer" from python.org/downloads and open it (double-click,
     Continue, Install).
   - Windows: install Python from python.org/downloads and **tick "Add python.exe to PATH"** on the first screen, and
-    install **Git for Windows** (git-scm.com, default options – it provides the `sh` the plugin starts with). The
-    plugin finds `python3`, `python` or `py -3` by itself; no file needs editing.
+    install **Git for Windows** (git-scm.com, default options – it provides the `sh` the plugin starts with; its default
+    leaves `sh` off the PATH, which `/video2aeo:doctor` fixes with the user's OK). The plugin finds `python3`,
+    `python` or `py -3` by itself; no file needs editing.
 - **`python.ok` is false** (older than 3.9) – same installer steps, then restart the app.
 - **`user_dir_writable` is false** – ask the user to pick a different home folder or contact IT; the brand
   settings cannot be saved otherwise.
@@ -69,6 +70,16 @@ Then call `setup_status` and use it like this:
 
 If the tools are unavailable (plain chat, not Claude Code mode with a working folder), run the interview anyway, then
 tell the user the answers can only be saved in Claude Code mode, and list them so they are not lost.
+
+## 0b. Files from an earlier install
+
+Only when `configured` is false and `current` is mostly empty: ask once „Имате ли файлове от по-ранна инсталация
+(папка или .zip с brand.json, glossary.json, guidelines.md)?“. If yes, call `read_setup_bundle` with the path. Show the
+user a short summary of what was found (channel, hosts, glossary entry count, guidelines present) and mention every
+entry of `unrecognised_keys` as „записано, но плъгинът не го ползва“. Spot obvious data slips (for example two people
+with the same link) and ask instead of fixing silently. Then treat the imported values as `current`: continue with the
+normal steps below, asking only „keep or change?“ and the questions the files could not answer (episode format, episodes
+root, series folder). Save through `save_setup` only after the usual confirmation – never save unseen content.
 
 ## 1. Language and the channel
 

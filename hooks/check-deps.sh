@@ -12,6 +12,21 @@ if ! find_python; then
   exit 0
 fi
 
+# Windows: the app starts the helper with `sh`; the PATH it sees is the registry PATH, not this shell's. Fail open.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    ps1=$(cygpath -w "$here/path-check.ps1" 2>/dev/null) || ps1=""
+    if [ -n "$ps1" ] && command -v powershell.exe >/dev/null 2>&1; then
+      state=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1" 2>/dev/null | tr -d '\r')
+      case "$state" in
+        found:*|git-missing)
+          echo "video2aeo: dependency check FAILED. The Windows PATH of the Claude app has no 'sh' (from Git for Windows), so the video2aeo helper cannot start."
+          echo "Tell the user in plain words and run /video2aeo:doctor, which can fix it in one step. Restart of the Claude app is needed afterwards."
+          exit 0;;
+      esac
+    fi;;
+esac
+
 exe=$($PY_CMD -c 'import sys; print(sys.executable)' 2>/dev/null)
 home=${VIDEO2AEO_HOME:-$HOME/.video2aeo}
 note="$home/last_python"

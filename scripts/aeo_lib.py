@@ -710,7 +710,72 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         _write_atomic(marker_path, writes[marker_path])
     except OSError as ex:
         return {"ok": False, "errors": [f"Could not write to {USER_DIR}: {ex}"], **setup_status()}
-    return {"ok": True, "set_aside": [p.name + ".broken" for p in broken], **setup_status()}
+    extra = _unrecognised_keys(brand, load_json(PLUGIN_ROOT / "config" / "brand.json")) if isinstance(brand, dict) else []
+    return {"ok": True, "set_aside": [p.name + ".broken" for p in broken], "unrecognised_keys": extra, **setup_status()}
+
+
+def _unrecognised_keys(data: dict, defaults: dict, prefix: str = "") -> list:
+    """Dotted paths in `data` that the generic brand.json does not know. Saved all the same (extra notes are harmless);
+    format profiles (brand.formats.<id>) are an open map and are checked elsewhere."""
+    out = []
+    for k, v in data.items():
+        path = f"{prefix}{k}"
+        if k not in defaults:
+            out.append(path)
+        elif isinstance(v, dict) and isinstance(defaults[k], dict) and path != "formats":
+            out += _unrecognised_keys(v, defaults[k], path + ".")
+    return sorted(out)
+
+
+SETUP_BUNDLE_FILES = ("brand.json", "glossary.json", "guidelines.md")
+SETUP_BUNDLE_MAX = 2_000_000  # bytes per file
+
+
+def read_setup_bundle(path: str) -> dict:
+    """Read an earlier install's brand.json, glossary.json and guidelines.md from a folder or a .zip so the setup skill
+    can offer them for review and pass them to save_setup. Read-only; only these three file names are looked at."""
+    import zipfile
+    src = Path(str(path or "").strip().strip('"')).expanduser()
+    if not src.exists():
+        return {"ok": False, "errors": [f"{src} does not exist."]}
+    found: dict = {}
+    try:
+        if src.is_dir():
+            for name in SETUP_BUNDLE_FILES:
+                for cand in (src / name, src / ".video2aeo" / name):
+                    if cand.is_file():
+                        if cand.stat().st_size > SETUP_BUNDLE_MAX:
+                            return {"ok": False, "errors": [f"{cand.name} is too large."]}
+                        found[name] = cand.read_text(encoding="utf-8")
+                        break
+        elif zipfile.is_zipfile(src):
+            with zipfile.ZipFile(src) as z:
+                for info in z.infolist():
+                    base = info.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                    if base in SETUP_BUNDLE_FILES and base not in found and not info.is_dir():
+                        if info.file_size > SETUP_BUNDLE_MAX:
+                            return {"ok": False, "errors": [f"{base} is too large."]}
+                        found[base] = z.read(info).decode("utf-8")
+        else:
+            return {"ok": False, "errors": [f"{src} is neither a folder nor a .zip file."]}
+        out: dict = {"ok": True, "source": str(src), "found": sorted(found)}
+        for name in ("brand.json", "glossary.json"):
+            if name in found:
+                data = json.loads(found[name])
+                if not isinstance(data, dict):
+                    return {"ok": False, "errors": [f"{name} must hold a JSON object."]}
+                out[name[:-5]] = data
+        if "guidelines.md" in found:
+            out["guidelines_md"] = found["guidelines.md"]
+        if "brand" in out:
+            out["unrecognised_keys"] = _unrecognised_keys(_expand_dotted(out["brand"]),
+                                                         load_json(PLUGIN_ROOT / "config" / "brand.json"))
+        if not found:
+            out["ok"] = False
+            out["errors"] = [f"None of {', '.join(SETUP_BUNDLE_FILES)} found in {src}."]
+        return out
+    except (OSError, ValueError, UnicodeDecodeError, zipfile.BadZipFile) as ex:
+        return {"ok": False, "errors": [f"Could not read {src}: {ex}"]}
 
 
 def _deep_merge(a: dict, b: dict) -> dict:

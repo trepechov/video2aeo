@@ -79,7 +79,9 @@ the legacy `~/.yt-aeo/` folder and `YT_AEO_HOME` when the new ones are missing. 
 teaser/boilerplate markers in the edited transcript.
 0.6.0 added the episodes root + series folders + workspace check (see `docs/plans/2026-10-22-001-…`).
 0.8.0 made Windows installs work: `sh server/launch.sh` finds `python3`/`python`/`py -3`, a fail-open SessionStart check, `/video2aeo:doctor`,
-Git for Windows documented as a requirement, Code mode (not Cowork) as the only route. **Not yet tested on Windows** (does the app's PATH include Git's `usr\bin`?).
+Git for Windows documented as a requirement, Code mode (not Cowork) as the only route. First Windows run (2 Nov 2026): Git's default install leaves `sh` off the PATH, so the helper did not start; 0.8.1 adds `server/path-check.ps1` / `fix-path.ps1`
+(registry-PATH check in the SessionStart hook and `/video2aeo:doctor`, fix only with the user's OK), `read_setup_bundle` (import an earlier install from a folder/zip)
+and `unrecognised_keys` in `save_setup`. A single `.mcp.json` cannot avoid `sh` on Windows (no per-OS keys; only `${VAR}`/`${VAR:-x}` expansion).
 Fixture render/validate ok on Python 3.14 and 3.9; 65 Gutenberg blocks, 0 invalid. **Not yet tested:** agents + MCP in
 Desktop Code mode (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
 

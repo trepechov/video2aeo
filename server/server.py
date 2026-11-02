@@ -33,11 +33,17 @@ TOOLS = [
      "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.video2aeo/ can be "
                     "written, and whether the optional subtitle downloaders are installed. Used by the setup skill.",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "read_setup_bundle",
+     "description": "Read brand.json, glossary.json and guidelines.md of an earlier install from a folder or a .zip (read-only). "
+                    "Returns the parsed brand/glossary, guidelines_md and unrecognised_keys. Show the content to the user; only after "
+                    "they approve pass it to save_setup. Used by the setup skill when the user has an earlier setup.",
+     "inputSchema": {"type": "object", "required": ["path"], "properties": {
+         "path": {"type": "string", "description": "Absolute path of a folder or a .zip holding the earlier files"}}}},
     {"name": "save_setup",
      "description": "Write the user-approved setup answers to ~/.video2aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
                     "brand/glossary are merged over existing files; omitted arguments keep what is saved; skipped optional fields "
                     "are saved empty; the previous guidelines.md is kept as guidelines.md.bak. Only call after the user approved "
-                    "the summary. Returns ok/errors plus the new status.",
+                    "the summary. Returns ok/errors, unrecognised_keys (brand keys the plugin does not read – mention them) plus the new status.",
      "inputSchema": {"type": "object", "properties": {
          "brand": {"type": "object", "description": "Nested subset of config/brand.json, e.g. {\"channel\": \"…\", \"description\": "
                                                     "{\"promo\": \"…\", \"promo_position\": \"end\", \"schedule\": \"…\"}}"},
@@ -132,6 +138,8 @@ def call(name, args):
         return L.setup_status()
     if name == "check_environment":
         return L.check_environment()
+    if name == "read_setup_bundle":
+        return L.read_setup_bundle(args.get("path"))
     if name == "save_setup":
         return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"),
                             args.get("episodes_root"), args.get("models"))

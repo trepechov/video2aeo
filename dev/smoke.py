@@ -436,6 +436,29 @@ check(L.load_json(L.USER_DIR / "config.json")["models"]["profile"] == "quality",
 ok = L.save_setup(models={})
 check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.load_config(), "models {} resets to defaults")
 
+# --- import of an earlier setup (folder and zip), unrecognised keys, empty disclaimer line --------------
+import zipfile  # noqa: E402
+old_dir = TMP / "old-install"
+old_dir.mkdir()
+(old_dir / "brand.json").write_text(json.dumps({"channel": "Old Show", "podcast": {"host": "A"}, "description": {"disclaimer_url": ""}}), encoding="utf-8")
+(old_dir / "glossary.json").write_text(json.dumps({"fixes": [["x", "y"]]}), encoding="utf-8")
+(old_dir / "guidelines.md").write_text("# Rules\n", encoding="utf-8")
+(old_dir / "other.txt").write_text("ignored", encoding="utf-8")
+with zipfile.ZipFile(TMP / "old.zip", "w") as z:
+    for f in ("brand.json", "glossary.json", "guidelines.md", "other.txt"):
+        z.write(old_dir / f, f"Archive/{f}")
+for src in (old_dir, TMP / "old.zip"):
+    b = L.read_setup_bundle(str(src))
+    check(b["ok"] and b["found"] == ["brand.json", "glossary.json", "guidelines.md"] and b["brand"]["channel"] == "Old Show"
+          and b["guidelines_md"].startswith("# Rules") and b["unrecognised_keys"] == ["podcast"], f"bundle from {src.name}: {b}")
+check(not L.read_setup_bundle(str(TMP / "nothing-here"))["ok"], "missing bundle path")
+(TMP / "empty-dir").mkdir()
+check(not L.read_setup_bundle(str(TMP / "empty-dir"))["ok"], "folder without setup files")
+saved = L.save_setup(brand=b["brand"], glossary=b["glossary"], guidelines_md=b["guidelines_md"])
+check(saved["ok"] and saved["unrecognised_keys"] == ["podcast"], f"save_setup reports unrecognised keys: {saved.get('errors')}")
+top, foot = L._promo_and_footer(desc(disclaimer_url=""))
+check("отказ от отговорност" not in foot and "{DISCLAIMER_URL}" not in foot, f"empty disclaimer line must be dropped: {foot!r}")
+
 # --- launcher and SessionStart check without python3 on PATH (Windows-like) --------------------------
 def tool_path(extra):
     """A PATH holding only the POSIX tools the scripts use, plus `extra` (name -> executable or script text)."""
@@ -473,6 +496,12 @@ run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
 (TMP / "no-home" / "last_python").write_text("/old/python\n")
 r = run_sh(ROOT / "hooks" / "check-deps.sh", only_python)
 check("changed" in r.stdout and r.returncode == 0, f"changed Python must be reported: {r.stdout!r}")
+for answer, expect_fail in (("on-path", False), ("found:C:\\Git\\bin", True), ("git-missing", True)):  # Windows PATH check
+    win = tool_path({"python": sys.executable, "uname": "#!/bin/sh\necho MINGW64_NT-10.0\n", "cygpath": "#!/bin/sh\necho \"$2\"\n",
+                     "powershell.exe": f"#!/bin/sh\necho '{answer}'\n"})
+    r = run_sh(ROOT / "hooks" / "check-deps.sh", win)
+    check(r.returncode == 0 and ("FAILED" in r.stdout) == expect_fail and (not expect_fail or "doctor" in r.stdout),
+          f"Windows sh-on-PATH check ({answer}): {r.stdout!r}")
 mcp = L.load_json(ROOT / ".mcp.json")["mcpServers"]["video2aeo"]
 check(mcp["command"] == "sh" and mcp["args"][0].endswith("server/launch.sh"), "mcp.json starts the launcher")
 hooks = L.load_json(ROOT / "hooks" / "hooks.json")["hooks"]
