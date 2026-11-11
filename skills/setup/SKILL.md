@@ -8,7 +8,7 @@ description: >
   plugin up by an interview or from a colleague's setup archive, and writes the brand files – no manual file editing and
   no terminal needed.
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # One-time setup for Video2AEO
