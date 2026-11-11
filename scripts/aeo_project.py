@@ -126,15 +126,24 @@ class Project:
         else:
             v = self.entry.get("episodes_root") or ""
             rel = self.team_config().get("episodes_root")
-            if not v and isinstance(rel, str) and rel.strip() and self.project_folder:
-                v = str(self.project_folder / rel) if not Path(rel).is_absolute() else rel
+            if not v and isinstance(rel, str) and rel.strip() and self.project_folder and not Path(rel).is_absolute():
+                try:  # a shared folder must stay inside the project folder (the file may come from someone else)
+                    cand = (self.project_folder / rel).resolve()
+                    v = str(cand) if _inside(cand, Path(self.project_folder).resolve()) else ""
+                except (OSError, RuntimeError):
+                    v = ""
         return Path(v).expanduser() if isinstance(v, str) and v.strip() else None
 
-    def credentials_path(self) -> Path:
-        return self.settings_dir / "config.json" if self.legacy else user_home() / "credentials" / f"{self.id}.json"
+    def credentials_path(self):
+        """Sign-ins of this project: only for a project in this computer's list (its id there), never for settings
+        merely found in a folder – their id is chosen by whoever wrote project.json."""
+        if self.legacy:
+            return self.settings_dir / "config.json"
+        return user_home() / "credentials" / f"{self.id}.json" if self.entry else None
 
     def credentials(self) -> dict:
-        return _read_json(self.credentials_path())
+        path = self.credentials_path()
+        return _read_json(path) if path else {}
 
     def summary(self) -> dict:
         return {"id": self.id, "name": self.name, "settings_dir": str(self.settings_dir), "location": self.location,
@@ -145,6 +154,23 @@ class Project:
 # this computer's list of projects
 # ----------------------------------------------------------------------------
 
+class RegistryDamaged(OSError):
+    pass
+
+
+def registry_error() -> str:
+    """'' when projects.json is missing or readable, else why it cannot be used."""
+    path = user_home() / REGISTRY
+    if not path.exists():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        return f"{path} is damaged ({ex}); fix or restore it – nothing is written to it until then."
+    return "" if isinstance(data, dict) and isinstance(data.get("projects", {}), dict) else \
+        f"{path} is damaged (not a list of projects); fix or restore it – nothing is written to it until then."
+
+
 def load_registry() -> dict:
     reg = _read_json(user_home() / REGISTRY)
     projects = reg.get("projects") if isinstance(reg.get("projects"), dict) else {}
@@ -152,6 +178,9 @@ def load_registry() -> dict:
 
 
 def save_registry(reg: dict) -> None:
+    err = registry_error()
+    if err:  # never replace a damaged list with a partial one: every other project would be forgotten
+        raise RegistryDamaged(err)
     _write_json(user_home() / REGISTRY, reg)
 
 
@@ -178,7 +207,8 @@ def list_projects() -> list:
         if isinstance(e, dict) and e.get("settings_dir"):
             out.append({"id": pid, "name": e.get("name") or pid, "location": e.get("location", "profile"),
                         "settings_dir": e["settings_dir"], "folders": e.get("folders") or [],
-                        "episodes_root": e.get("episodes_root", ""), "default": pid == reg["default"]})
+                        "episodes_root": str(_from_entry(pid, e, "list").episodes_root() or ""),
+                        "default": pid == reg["default"]})
     return out
 
 
@@ -201,11 +231,11 @@ def find_in_folder(path: Path):
         except OSError:
             continue
         target = link.get("settings_dir")
-        if isinstance(target, str) and target.strip():
-            s = Path(target).expanduser()
-            s = (d / s) if not s.is_absolute() else s
-            if (s / PROJECT_FILE).is_file():
-                return d, s.resolve(), "link"
+        if isinstance(target, str) and target.strip() and not Path(target).is_absolute():
+            s = (d / target).resolve()
+            boundary = _git_root(d) or d  # a link (from a clone) may only point inside its own repository
+            if _inside(s, boundary.resolve()) and (s / PROJECT_FILE).is_file():
+                return d, s, "link"
     return None
 
 
@@ -247,7 +277,7 @@ def resolve(path=None, project_id: str | None = None, strong_only: bool = False)
             hit = find_in_folder(p)
             if hit:
                 return _settings_project(hit[1], hit[0], hit[2], reg)
-            best, best_len = None, -1
+            best, best_len, tie = None, -1, False
             for pid, e in reg["projects"].items():
                 if not isinstance(e, dict) or not e.get("settings_dir"):
                     continue
@@ -258,9 +288,12 @@ def resolve(path=None, project_id: str | None = None, strong_only: bool = False)
                         fp = Path(f).expanduser().resolve()
                     except (OSError, RuntimeError):
                         continue
-                    if _inside(p, fp) and len(fp.parts) > best_len:
-                        best, best_len = (pid, e), len(fp.parts)
-            if best:
+                    if _inside(p, fp):
+                        if len(fp.parts) > best_len:
+                            best, best_len, tie = (pid, e), len(fp.parts), False
+                        elif len(fp.parts) == best_len and best and best[0] != pid:
+                            tie = True
+            if best and not tie:
                 return _from_entry(best[0], best[1], "list")
     if strong_only:
         return None
@@ -268,7 +301,7 @@ def resolve(path=None, project_id: str | None = None, strong_only: bool = False)
     if len(valid) == 1:
         pid, e = next(iter(valid.items()))
         return _from_entry(pid, e, "only")
-    if not valid and legacy_present():  # the conversion failed: read the 0.9 folder in place, as 0.9 did
+    if not valid and legacy_present() and not (user_home() / REGISTRY).exists():  # conversion failed: read 0.9 in place
         return Project("default", "", user_home(), "legacy", "legacy")
     return None
 
@@ -402,29 +435,48 @@ def create_project(name: str, location: str = "profile", project_folder=None, se
         errs.append(f"{target / LINK_FILE} already points to another settings folder.")
     if errs:
         return None, errs
-    target.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _write_json(target / PROJECT_FILE, {"id": pid, "name": name or pid, "settings_format": SETTINGS_FORMAT})
-    if location in ("project", "custom") and not (target / ".gitignore").exists():
-        L._write_atomic(target / ".gitignore", GITIGNORE)
-    if link:
-        _write_json(link, {"settings_dir": rel})
-    entry = {"name": name or pid, "settings_dir": str(target), "location": location, "folders": _folders_for(pf),
-             "trusted": _now(), "created": _now()}
-    reg["projects"][pid] = entry
-    if not reg["default"] or reg["default"] not in reg["projects"]:
-        reg["default"] = pid
-    save_registry(reg)
+    if registry_error():
+        return None, [registry_error()]
+    made = [] if target.exists() else [target]
+    try:
+        target.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _write_json(target / PROJECT_FILE, {"id": pid, "name": name or pid, "settings_format": SETTINGS_FORMAT})
+        made.append(target / PROJECT_FILE)
+        if location in ("project", "custom") and not (target / ".gitignore").exists():
+            L._write_atomic(target / ".gitignore", GITIGNORE)
+            made.append(target / ".gitignore")
+        if link:
+            _write_json(link, {"settings_dir": rel})
+            made.append(link)
+        entry = {"name": name or pid, "settings_dir": str(target), "location": location, "folders": _folders_for(pf),
+                 "trusted": _now(), "created": _now()}
+        reg["projects"][pid] = entry
+        if not reg["default"] or reg["default"] not in reg["projects"]:
+            reg["default"] = pid
+        save_registry(reg)
+    except OSError as ex:  # leave no half-made project behind
+        for f in reversed(made):
+            shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
+        return None, [f"Could not create the project in {target}: {ex}"]
     return _from_entry(pid, entry, "new"), []
 
 
 def trust_project(project: Project) -> Project:
-    """Remember a settings folder found in a project folder (after the user reviewed it) in this computer's list."""
+    """Remember a settings folder found in a project folder (after the user reviewed it) in this computer's list.
+    A project whose folder was renamed or moved keeps its id (and so its sign-in): an entry with the same id whose
+    settings folder no longer exists is pointed to the new place."""
     reg = load_registry()
     pid, entry = _entry_for_settings(reg, project.settings_dir)
     if not pid:
-        pid = _unique_id(reg, project.id)
-        entry = {"name": project.name, "settings_dir": str(project.settings_dir), "location": project.location,
-                 "folders": _folders_for(project.project_folder)}
+        old = reg["projects"].get(project.id)
+        if isinstance(old, dict) and not (Path(old.get("settings_dir", "")) / PROJECT_FILE).is_file():
+            pid, entry = project.id, old
+            entry.update(settings_dir=str(project.settings_dir), location=project.location,
+                         folders=_folders_for(project.project_folder))
+        else:
+            pid = _unique_id(reg, project.id)
+            entry = {"name": project.name, "settings_dir": str(project.settings_dir), "location": project.location,
+                     "folders": _folders_for(project.project_folder)}
     entry["trusted"] = _now()
     reg["projects"][pid] = entry
     reg["default"] = reg["default"] if reg["default"] in reg["projects"] else pid
@@ -432,12 +484,13 @@ def trust_project(project: Project) -> Project:
     return _from_entry(pid, entry, project.found_by)
 
 
-def set_machine_value(project: Project, key: str, value) -> None:
-    """A computer-specific value of a project (episodes_root, folders) in projects.json."""
+def set_machine_value(project: Project, key: str, value) -> bool:
+    """A computer-specific value of a project (episodes_root, folders) in projects.json. False when the project is not
+    in the list (settings named by VIDEO2AEO_PROJECT only)."""
     reg = load_registry()
     pid, entry = _entry_for_settings(reg, project.settings_dir)
     if not pid:
-        return
+        return False
     if value in (None, ""):
         entry.pop(key, None)
     else:
@@ -445,6 +498,7 @@ def set_machine_value(project: Project, key: str, value) -> None:
     reg["projects"][pid] = entry
     save_registry(reg)
     project.entry = entry
+    return True
 
 
 def _same_tree(a: Path, b: Path) -> bool:
@@ -453,9 +507,20 @@ def _same_tree(a: Path, b: Path) -> bool:
     return fa == fb and all((a / r).read_bytes() == (b / r).read_bytes() for r in fa)
 
 
+def _link_points_to(link: Path, settings: Path) -> bool:
+    target = _read_json(link).get("settings_dir")
+    try:
+        return isinstance(target, str) and (link.parent.parent / target).resolve() == settings.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
 def move_project(pid: str, location: str, settings_dir=None, project_folder=None) -> dict:
     """Move a project's settings to another location: copy, verify, switch the list (and link file), then rename the
-    old folder to <name>-moved-<timestamp> (never deleted)."""
+    old folder to <name>-moved-<timestamp> (never deleted). The target must be new or empty (or, for the project
+    location, hold only this project's own link file). Any failure undoes the steps already done."""
+    if registry_error():
+        return {"ok": False, "errors": [registry_error()]}
     reg = load_registry()
     entry = reg["projects"].get(pid)
     if not isinstance(entry, dict) or not entry.get("settings_dir"):
@@ -469,47 +534,66 @@ def move_project(pid: str, location: str, settings_dir=None, project_folder=None
     target, errs = _target(location, pid, pf, settings_dir)
     if errs:
         return {"ok": False, "errors": errs}
+    if location == "custom" and pf is not None and target == pf / DOT:
+        location = "project"
     if target.resolve() == src.resolve():
         return {"ok": False, "errors": ["The settings are already in that folder."]}
-    old_link = (pf / DOT / LINK_FILE) if pf else None
-    replace_link = location == "project" and old_link is not None and old_link.is_file() \
-        and not (target / PROJECT_FILE).exists()
-    errs = [e for e in _target_errors(target)] if not replace_link else []
-    if location == "custom" and target == (pf / DOT if pf else None):
-        location = "project"
+    own_link = (pf / DOT / LINK_FILE) if pf else None
+    own_link = own_link if own_link is not None and own_link.is_file() and _link_points_to(own_link, src) else None
+    existing = sorted(f.name for f in target.iterdir()) if target.is_dir() else []
+    if existing and not (location == "project" and own_link is not None and existing == [LINK_FILE]):
+        return {"ok": False, "errors": [f"{target} is not empty ({', '.join(existing[:5])}); choose a new or empty folder."]}
+    errs = [e for e in _target_errors(target) if "cannot be written" in e or "user folder" in e]
     link, rel = _link_path(pf, target) if (location == "custom" and pf) else (None, None)
+    if link and link.exists() and link != own_link:
+        errs.append(f"{link} already points to other settings.")
     if errs:
         return {"ok": False, "errors": errs}
-    tmp = target.parent / f".{target.name}.moving-{_stamp()}"
+
+    stamp = _stamp()
+    undo: list = []   # steps to reverse, newest last
+    tmp = target.parent / f".{target.name}.moving-{stamp}"
+    moved = src.parent / f"{src.name}-moved-{stamp}"
+    old_entry = json.loads(json.dumps(entry))
     try:
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        shutil.copytree(src, tmp, symlinks=False)
+        shutil.copytree(src, tmp, symlinks=True)
+        undo.append(lambda: shutil.rmtree(tmp, ignore_errors=True))
         if not _same_tree(src, tmp):
             raise OSError("the copy differs from the original")
-        if replace_link:
-            old_link.unlink()
-        if target.exists():  # an empty folder or one holding only the old link file
-            for f in tmp.iterdir():
-                os.replace(f, target / f.name)
-            tmp.rmdir()
-        else:
-            os.replace(tmp, target)
+        if own_link is not None and location != "custom":  # this project's pointer is no longer needed
+            link_text = own_link.read_text(encoding="utf-8")
+            own_link.unlink()
+            undo.append(lambda: _lib()._write_atomic(own_link, link_text))
+        if target.is_dir():  # empty (or held only the retired link file)
+            target.rmdir()
+            undo.append(lambda: target.mkdir(mode=0o700, exist_ok=True))
+        os.replace(tmp, target)
+        undo.append(lambda: os.replace(target, tmp))
         if location in ("project", "custom") and not (target / ".gitignore").exists():
             _lib()._write_atomic(target / ".gitignore", GITIGNORE)
-        moved = src.parent / f"{src.name}-moved-{_stamp()}"
-        os.replace(src, moved)
-        if old_link is not None and old_link.is_file() and location != "custom":
-            os.replace(old_link, old_link.with_name(f"{LINK_FILE}.moved-{_stamp()}"))
+        entry.update(settings_dir=str(target.resolve()), location=location)
+        if pf and str(pf) not in (entry.get("folders") or []):
+            entry["folders"] = [*_folders_for(pf), *(entry.get("folders") or [])]
+        reg["projects"][pid] = entry
+        save_registry(reg)
+        undo.append(lambda: (reg["projects"].__setitem__(pid, old_entry), save_registry(reg)))
+        os.replace(src, moved)   # the old folder must not be found any more (a .video2aeo/ above a session folder)
+        undo.append(lambda: os.replace(moved, src))
         if link:
             _write_json(link, {"settings_dir": rel})
     except OSError as ex:
+        failed = []
+        for step in reversed(undo):
+            try:
+                step()
+            except OSError as uex:
+                failed.append(str(uex))
         shutil.rmtree(tmp, ignore_errors=True)
-        return {"ok": False, "errors": [f"Could not move the settings: {ex}. Nothing was changed in {src}."]}
-    entry.update(settings_dir=str(target.resolve()), location=location)
-    if pf and str(pf) not in (entry.get("folders") or []):
-        entry["folders"] = [*_folders_for(pf), *(entry.get("folders") or [])]
-    reg["projects"][pid] = entry
-    save_registry(reg)
+        msg = f"Could not move the settings: {ex}."
+        msg += (f" Nothing was changed; the settings are still in {src}." if not failed else
+                f" Undoing it was incomplete ({'; '.join(failed)}) – check {src} and {target}.")
+        return {"ok": False, "errors": [msg]}
     return {"ok": True, "project": _from_entry(pid, entry, "list").summary(), "old_folder": str(moved),
             **({"link_file": str(link)} if link else {})}
 
@@ -534,22 +618,25 @@ def ensure_migrated() -> dict:
     if key in _MIGRATION or (home / REGISTRY).exists() or not legacy_present(home):
         return _MIGRATION.get(key, {})
     lock = home / LOCK
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        os.close(fd)
-    except FileExistsError:
+    token = f"{os.getpid()}-{_now()}"
+    for attempt in (1, 2):
         try:
-            stale = (datetime.datetime.now().timestamp() - lock.stat().st_mtime) > 600
-        except OSError:
-            stale = False
-        if not stale:
-            return {}   # another session is converting right now; read the old folder this time
-        lock.unlink(missing_ok=True)
-        return ensure_migrated()
-    except OSError as ex:
-        _MIGRATION[key] = {"error": f"Could not convert the settings in {home}: {ex}"}
-        return _MIGRATION[key]
-    tmp = None
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, token.encode())
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                stale = (datetime.datetime.now().timestamp() - lock.stat().st_mtime) > 600
+            except OSError:
+                stale = True
+            if not stale or attempt == 2:
+                return {}   # another session is converting right now; read the old folder this time
+            lock.unlink(missing_ok=True)   # a crashed conversion; try once more
+        except OSError as ex:
+            _MIGRATION[key] = {"error": f"Could not convert the settings in {home}: {ex}"}
+            return _MIGRATION[key]
+    tmp = dest_done = creds = None
     try:
         if (home / REGISTRY).exists():  # converted by another session meanwhile
             return {}
@@ -568,7 +655,8 @@ def ensure_migrated() -> dict:
         shutil.rmtree(tmp, ignore_errors=True)
         tmp.mkdir(mode=0o700, parents=True)
         copied = []
-        for f in [*(home / n for n in LEGACY_COPY), *home.glob("*.broken")]:
+        broken = [home / f"{n}.broken" for n in ("brand.json", "glossary.json", "setup.json")]  # never config.json's
+        for f in [*(home / n for n in LEGACY_COPY), *broken]:
             if f.is_file():
                 shutil.copy2(f, tmp / f.name)
                 copied.append(f.name)
@@ -585,9 +673,10 @@ def ensure_migrated() -> dict:
             if (a.is_dir() and not _same_tree(a, b)) or (a.is_file() and a.read_bytes() != b.read_bytes()):
                 raise OSError(f"the copy of {c} differs from the original")
         if isinstance(cfg.get("wordpress"), dict) and cfg["wordpress"]:
-            _write_json(home / "credentials" / f"{pid}.json", {"wordpress": cfg["wordpress"]}, mode=0o600)
+            creds = home / "credentials" / f"{pid}.json"
+            _write_json(creds, {"wordpress": cfg["wordpress"]}, mode=0o600)
         os.replace(tmp, dest)
-        tmp = None
+        tmp, dest_done = None, dest
         root = cfg.get("episodes_root") if isinstance(cfg.get("episodes_root"), str) else ""
         entry = {"name": name or pid, "settings_dir": str(dest.resolve()), "location": "profile",
                  "folders": [root] if root else [], "trusted": _now(), "created": _now(),
@@ -595,6 +684,7 @@ def ensure_migrated() -> dict:
         if root:
             entry["episodes_root"] = root
         save_registry({"version": 1, "default": pid, "projects": {pid: entry}})
+        dest_done = creds = None   # converted: from here on nothing is rolled back
         try:
             L._write_atomic(home / MOVED_NOTE, (
                 "Video2AEO 0.10 keeps every project in its own settings folder.\n"
@@ -609,12 +699,19 @@ def ensure_migrated() -> dict:
                            "copied": copied}
         return _MIGRATION[key]
     except (OSError, ValueError) as ex:
-        if tmp is not None:
-            shutil.rmtree(tmp, ignore_errors=True)
+        for leftover in (tmp, dest_done):  # nothing half-made stays behind; the next start tries again
+            if leftover is not None:
+                shutil.rmtree(leftover, ignore_errors=True)
+        if creds is not None and not (home / REGISTRY).exists():
+            creds.unlink(missing_ok=True)
         _MIGRATION[key] = {"error": f"Could not convert the settings in {home}: {ex}. They are used as they are."}
         return _MIGRATION[key]
     finally:
-        lock.unlink(missing_ok=True)
+        try:
+            if lock.read_text() == token:   # only the lock this process took
+                lock.unlink()
+        except OSError:
+            pass
 
 
 def clear_migration_notice(project: Project) -> None:

@@ -72,6 +72,8 @@ for n, data in files.items():
 (home / "guidelines" / "youtube-description.md").write_text("# YT\n", encoding="utf-8")
 (home / "backup-20261001-120000" / "brand.json").write_text("{}", encoding="utf-8")
 (home / "Archive.zip").write_bytes(b"PK user file")
+(home / "config.json.broken").write_text('{"wordpress": {"app_password": "SECRET-1"}', encoding="utf-8")
+(home / "glossary.json.broken").write_text("old", encoding="utf-8")
 (home / "last_python").write_text("/usr/bin/python3\n", encoding="utf-8")
 before = snapshot(home)
 
@@ -94,7 +96,8 @@ check(stat.S_IMODE(creds.stat().st_mode) == 0o600, "credentials file is private 
 check(N._load_wp_config(None)["app_password"] == "SECRET-1", "wp_push_draft finds the project's sign-in")
 check(N._yt_cookie_args() == ["--cookies-from-browser", "firefox"], "YouTube cookies stay computer-wide")
 check(not any("SECRET-1" in p.read_text(errors="ignore") for p in sd.rglob("*") if p.is_file()),
-      "no password in the settings folder")
+      "no password in the settings folder (config.json.broken is not copied)")
+check((sd / "glossary.json.broken").exists() and not (sd / "config.json.broken").exists(), "only team .broken files copied")
 after = snapshot(home)
 check(all(after.get(k) == v for k, v in before.items()), "every 0.9 file is left byte-identical in place")
 check((home / PR.MOVED_NOTE).exists() and "old-show" in (home / PR.MOVED_NOTE).read_text(), "MOVED-TO-PROJECTS.txt written")
@@ -150,7 +153,7 @@ r = L.save_setup(brand={"channel": "Show A", "topics": "a"}, episodes_root=str(s
                  create={"name": "Show A", "location": "project", "project_folder": str(show_a)})
 check(r["ok"] and r["configured"] and r["project"]["settings_dir"] == str(show_a / ".video2aeo"), f"project-folder project: {r.get('errors')}")
 check((show_a / ".video2aeo" / ".gitignore").read_text() == PR.GITIGNORE, ".gitignore for backups in a repo settings folder")
-check(L.load_json(show_a / ".video2aeo" / "project.json")["episodes_root"] == "episodes" and not PR.list_projects()[0].get("episodes_root"),
+check(L.load_json(show_a / ".video2aeo" / "project.json")["episodes_root"] == "episodes" and not PR.load_registry()["projects"]["show-a"].get("episodes_root"),
       "episodes folder inside the project folder is shared, relative")
 PR.set_active(None)
 r = L.save_setup(brand={"channel": "Show B", "topics": "b"},
@@ -226,10 +229,82 @@ check(p.id == "show-a" and p.found_by == "list", f"found through this computer's
 with PR.using(p):
     check(L.episodes_root() == show_a / "episodes", "the shared relative episodes folder still resolves after the move")
 res = PR.move_project("show-b", "profile")
-check(res["ok"] and list((show_b / ".video2aeo").glob("location.json.moved-*")) and not (show_b / ".video2aeo" / "location.json").exists(),
-      f"custom -> profile retires the link file: {res}")
+check(res["ok"] and not (show_b / ".video2aeo" / "location.json").exists(), f"custom -> profile removes the link file: {res}")
 check(not PR.move_project("nope", "profile")["ok"], "unknown project refused")
 check(not PR.move_project("show-b", "profile")["ok"], "already there")
+
+# --- 5b. review fixes: safe moves, damaged list, credentials, shared folders -----------------------------------
+before_reg = (home / "projects.json").read_bytes()
+busy = TMP / "busy"
+(busy / "notes").mkdir(parents=True)
+res = PR.move_project("show-b", "custom", settings_dir=str(busy), project_folder=str(show_b))
+check(not res["ok"] and "not empty" in res["errors"][0] and (busy / "notes").is_dir(), f"a non-empty folder is refused: {res}")
+check((home / "projects.json").read_bytes() == before_reg, "a refused move changes nothing")
+src_b = Path(PR.load_registry()["projects"]["show-b"]["settings_dir"])
+snap_b = snapshot(src_b)
+real_replace = PR.os.replace
+def fail_on_old(a, b):
+    if Path(a) == src_b:
+        raise OSError("folder in use")
+    return real_replace(a, b)
+PR.os.replace = fail_on_old
+try:
+    res = PR.move_project("show-b", "custom", settings_dir=str(TMP / "new-b"), project_folder=str(show_b))
+finally:
+    PR.os.replace = real_replace
+check(not res["ok"] and "Nothing was changed" in res["errors"][0], f"failed move is undone: {res}")
+check(snapshot(src_b) == snap_b and not (TMP / "new-b").exists() and (home / "projects.json").read_bytes() == before_reg
+      and not list(TMP.glob(".new-b.moving-*")), "after a failed move the old folder, the list and the target are as before")
+
+(home / "projects.json").write_text('{"projects": {', encoding="utf-8")
+PR.reset_active()
+st = (lambda: (PR.set_active(PR.resolve(str(show_c))), L.setup_status())[1])()
+check(st["registry_error"] and "damaged" in st["registry_error"], "a damaged list is reported")
+PR.set_active(None)
+r = L.save_setup(brand={"channel": "Z", "topics": "z"}, create={"name": "Z", "location": "profile"})
+check(not r["ok"] and (home / "projects.json").read_text() == '{"projects": {', "a damaged list is never overwritten")
+(home / "projects.json").write_bytes(before_reg)
+
+with PR.using(PR.resolve(str(show_c))):
+    creds = L.PR.active().credentials_path()
+    creds.parent.mkdir(parents=True, exist_ok=True)
+    creds.write_text(json.dumps({"wordpress": {"app_password": "C-SECRET"}}), encoding="utf-8")
+fake = TMP / "fake-repo"
+(fake / ".git").mkdir(parents=True)
+(fake / ".video2aeo").mkdir()
+(fake / ".video2aeo" / "project.json").write_text(json.dumps({"id": "show-c", "name": "Fake",
+                                                               "episodes_root": "../../outside"}), encoding="utf-8")
+p = PR.resolve(str(fake))
+check(p.id == "show-c" and not p.trusted and p.credentials() == {}, "a found folder never borrows another project's sign-in")
+check(p.episodes_root() is None, "a shared episodes folder outside the project folder is ignored")
+os.environ["VIDEO2AEO_PROJECT"] = str(fake / ".video2aeo")
+check(PR.resolve(str(TMP)).credentials() == {}, "VIDEO2AEO_PROJECT settings get no sign-in")
+PR.set_active(PR.resolve(str(TMP)))
+(TMP / "env-eps").mkdir()
+r = L.save_setup(episodes_root=str(TMP / "env-eps"))
+check(not r["ok"] and "VIDEO2AEO_PROJECT" in r["errors"][0], "no silent drop of the episodes folder for env settings")
+del os.environ["VIDEO2AEO_PROJECT"]
+(fake / ".video2aeo" / "project.json").unlink()
+(fake / ".video2aeo" / "location.json").write_text(json.dumps({"settings_dir": "../../../home-multi/projects/show-c"}),
+                                                   encoding="utf-8")
+check(PR.resolve(str(fake), strong_only=True) is None, "a link pointing outside its repository is ignored")
+
+with PR.using(PR.resolve(str(show_c))):
+    r = L.save_setup(episodes_root=str(show_a / "episodes"))
+check(not r["ok"] and "overlaps" in " ".join(r["errors"]), f"two projects cannot share an episodes folder: {r.get('errors')}")
+
+ren = TMP / "renamed"
+shutil.copytree(show_c, ren)
+shutil.rmtree(show_c)
+p = PR.resolve(str(ren))
+PR.set_active(p)
+check(L.setup_status()["needs_review"], "a renamed folder is reviewed again")
+t = PR.trust_project(p)
+check(t.id == "show-c" and t.credentials()["wordpress"]["app_password"] == "C-SECRET" and len(PR.list_projects()) == 4,
+      f"a renamed project keeps its id and sign-in: {t.summary()}")
+shutil.move(str(ren), str(show_c))   # and back: the entry follows again
+PR.trust_project(PR.resolve(str(show_c)))
+check(PR.resolve(str(show_c)).trusted and PR.resolve(str(show_c / "eps")).id == "show-c", "moved back and found again")
 
 # --- 6. the MCP server: the session's project, and no mixing with an episode of another project ----------------
 import importlib.util  # noqa: E402
@@ -242,8 +317,17 @@ check(st["project"]["id"] == "show-c" and srv.SESSION["project"].id == "show-c",
 with PR.using(PR.resolve(str(show_c))):
     ep = L.episode_path(L.load_brand(), None, "20261201", "first")["episode_dir"]
 check(srv.call("episode_status", {"episode_dir": ep}).get("project_mismatch") is None, "own episode accepted")
-srv.call("setup_status", {"project": "show-a-2"})
+srv.SESSION["project"] = None
+st = srv.call("setup_status", {"cwd": str(TMP / "unrelated")})
+check(st["project_choice_needed"], "unrelated folder: the user is asked")
+srv.call("setup_status", {"cwd": str(TMP / "unrelated"), "project": "show-a-2"})
 check(srv.SESSION["project"].id == "show-a-2", "choosing a project by id binds it")
+ws = srv.call("setup_status", {"cwd": str(TMP / "unrelated")})
+check(ws["project"]["id"] == "show-a-2" and not ws["project_choice_needed"], "the choice survives later calls with cwd")
+mm = srv.call("workspace_status", {"cwd": str(show_c)})
+check(mm.get("project_mismatch"), f"a folder of another project is refused: {mm}")
+srv.call("list_projects", {"project": "show-c"})
+check(srv.SESSION["project"].id == "show-a-2", "list_projects does not switch the session")
 res = srv.call("render_package", {"episode_dir": ep})
 check(res.get("project_mismatch") and res["episode_project"]["id"] == "show-c", f"episode of another project refused: {res}")
 check({"list_projects", "trust_project", "move_project"} <= {t["name"] for t in srv.TOOLS}, "project tools listed")

@@ -48,6 +48,8 @@ Call `setup_status(cwd)` first.
 - **`migrated` is set** – say once, in one sentence: the settings were moved into the project „‹project.name›“ and
   nothing changes for the user; the old files stay in `migrated.old_files`. **`migration_error`** – say in one sentence
   that the settings are used as they are and the move will be retried; carry on.
+- **`registry_error` is set** – this computer's list of projects (`~/.video2aeo/projects.json`) is damaged. Say so in
+  plain words with the path, and stop: nothing can be saved until it is restored (e.g. from a backup) or fixed.
 - **`project_choice_needed` is true** – several projects exist and this folder belongs to none: one *choice*
   question „С кой проект работим?“ with the names from `projects` plus „Нов проект“. A project → call
   `setup_status(cwd, project=<id>)` and continue with its status; „Нов проект“ → step 0a.

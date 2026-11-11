@@ -14,7 +14,8 @@ metadata:
 **STOP – preflight:** run `pwd` and call `setup_status(cwd)`. If the tool is missing or fails, follow the `doctor` skill
 first; if `project_choice_needed` is true, ask which project and call `setup_status(cwd, project=<id>)`; if `configured`
 is false, run the `setup` skill first. With a folder argument, the episode's own project is used; a `project_mismatch`
-error means it belongs to another project – say so and stop.
+error means it belongs to another project – say so and stop. Pass `cwd` to every later tool call and tell every agent
+you delegate to the settings folder (`setup_status.settings_dir`), as the `episode` skill does.
 
 Arguments: an optional episode folder (absolute path) and the word `--unattended` (used by automated restarts: nobody
 answers questions).

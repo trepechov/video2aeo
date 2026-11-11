@@ -174,7 +174,9 @@ GUARDED = {"fetch_transcript", "import_transcript", "render_package", "validate_
 # Every tool can name the session folder and the project; the project is resolved per call (see _project_for).
 for _tool in TOOLS:
     props = _tool["inputSchema"]["properties"]
-    props.setdefault("cwd", {"type": "string", "description": "The session's working folder (output of `pwd`); finds the project"})
+    props.setdefault("cwd", {"type": "string", "description": "The session's working folder (output of `pwd`); finds the "
+                             "project. Pass it on every call. An error with project_mismatch means the folder or episode "
+                             "belongs to another project than this session's: STOP and tell the user."})
     props.setdefault("project", {"type": "string", "description": "Id of the project the user chose (setup_status.projects)"})
     if _tool["name"] in GUARDED:
         _tool["inputSchema"]["properties"]["allow_outside_root"] = {
@@ -208,8 +210,14 @@ def _project_for(name, args):
                                    "user which project to use and call setup_status with it.",
                           "episode_project": p.summary(), "session_project": bound.summary()}
         return p or bound or PR.resolve(args["episode_dir"]), None
-    if args.get("cwd"):
-        return PR.resolve(args["cwd"]), None
+    if args.get("cwd"):  # a project the user chose stays chosen; a folder that clearly belongs to another one is refused
+        p = PR.resolve(args["cwd"], strong_only=True)
+        if p is not None and bound is not None and p.key != bound.key:
+            return None, {"ok": False, "project_mismatch": True,
+                          "error": f"This folder belongs to the project {p.name!r}, but this session works on {bound.name!r}. "
+                                   "STOP: open a new session in the right folder, or ask the user which project to use.",
+                          "folder_project": p.summary(), "session_project": bound.summary()}
+        return (p or bound or PR.resolve(args["cwd"])), None
     return (bound or PR.resolve(os.getcwd())), None
 
 
@@ -220,7 +228,8 @@ def call(name, args):
     with PR.using(project):
         out = _call(name, args, project)
         now = PR.active()  # save_setup(create=…) switches to the new project
-    if now is not None and (name in BINDING or args.get("project")):
+    # move_project / list_projects name a project without switching the session to it
+    if now is not None and (name in BINDING or (args.get("project") and name not in ("move_project", "list_projects"))):
         SESSION["project"] = now
     return out
 
@@ -237,8 +246,9 @@ def _call(name, args, project):
         return {"ok": True, **L.setup_status()}
     if name == "move_project":
         res = PR.move_project(args["project"], args["location"], args.get("settings_dir"), args.get("project_folder"))
-        if res.get("ok"):
-            PR.set_active(PR.resolve(project_id=args["project"]))
+        bound = SESSION["project"]
+        if res.get("ok") and bound is not None and bound.id == args["project"]:  # the session follows its own project
+            SESSION["project"] = PR.resolve(project_id=args["project"])
         return res
     if name == "check_environment":
         return S.check_environment()

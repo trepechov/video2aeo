@@ -507,6 +507,7 @@ def setup_status() -> dict:
         "needs_review": needs_review,
         "migrated": PR.migration_notice(project),
         "migration_error": mig.get("error", ""),
+        "registry_error": PR.registry_error(),
         "settings_dir": str(sd or ""),
         "settings_dir_writable": user_dir_writable(sd) if sd else user_dir_writable(),
         "user_dir": str(PR.user_home()),
@@ -576,6 +577,8 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         errors.append("These settings were found in the project folder and are not reviewed yet: show them to the user "
                       "and call trust_project first.")
     sd = project.settings_dir if project else None
+    if PR.registry_error():
+        errors.append(PR.registry_error())
     if replace and not isinstance(brand, dict):
         errors.append("replace needs the full brand.")
     if guidelines_files is not None:
@@ -613,6 +616,14 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                 errors.append(f"episodes_root {root_path} is not writable.")
             else:
                 root_path = root_path.resolve()
+                mine = str(project.settings_dir) if project else ""
+                for other in PR.list_projects():  # one episodes folder per project: episodes find their project by it
+                    o = other.get("episodes_root") or ""
+                    if o and (create is not None or other["settings_dir"] != mine):
+                        op = Path(o).expanduser().resolve()
+                        if PR._inside(root_path, op) or PR._inside(op, root_path):
+                            errors.append(f"episodes_root {root_path} overlaps the episodes folder of the project "
+                                          f"{other['name']!r} ({op}); each project needs its own folder.")
     if models is not None:
         errors += _models_errors(models, load_json(PLUGIN_ROOT / "config" / "models.json"))
     if (brand is None and glossary is None and guidelines_md is None and guidelines_off is None
@@ -702,6 +713,11 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
             cfg["episodes_root"] = str(root_path) if project.legacy else os.path.relpath(root_path, pf)
             writes[team_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
         machine_root = "" if shared else str(root_path)
+        if machine_root and not project.legacy and not project.entry:
+            return {"ok": False, "errors": ["These settings are not in this computer's list of projects (named by "
+                                            "VIDEO2AEO_PROJECT), so a computer-specific episodes folder cannot be saved. "
+                                            "Use an episodes folder inside the project folder, or run setup without "
+                                            "VIDEO2AEO_PROJECT."], **setup_status()}
 
     if replace and models is None:
         models = {}
