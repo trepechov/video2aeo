@@ -24,14 +24,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+import aeo_project as PR
+
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-# Per-user brand, glossary and credentials – never in the plugin. VIDEO2AEO_HOME overrides it (used by the example checks).
-def _user_dir() -> Path:
-    env = os.environ.get("VIDEO2AEO_HOME")
-    return Path(env).expanduser() if env else Path.home() / ".video2aeo"
+# Brand, glossary and guidelines live in the active project's settings folder (aeo_project); sign-ins and the list of
+# projects in the user folder ~/.video2aeo (VIDEO2AEO_HOME overrides it – used by the dev checks). Never in the plugin.
 
 
-USER_DIR = _user_dir()
+def settings_dir():
+    """The settings folder of the active project, or None when no project is chosen or set up yet."""
+    p = PR.active()
+    return p.settings_dir if p else None
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 GENERIC_CHAPTERS = {
     "интро", "въведение", "начало", "разговор", "пазар", "съвети", "финал",
@@ -72,9 +75,10 @@ def load_episode(ep_dir: Path) -> dict:
 
 
 def load_brand(override: Path | None = None) -> dict:
-    """Generic plugin defaults, merged with ~/.video2aeo/brand.json and then an explicit override file."""
+    """Generic plugin defaults, merged with the project's brand.json and then an explicit override file."""
     brand = load_json(PLUGIN_ROOT / "config" / "brand.json")
-    for path in (USER_DIR / "brand.json", override):
+    sd = settings_dir()
+    for path in (sd / "brand.json" if sd else None, override):
         if path and Path(path).exists():
             brand = _deep_merge(brand, load_json(path))
     return brand
@@ -157,10 +161,17 @@ def require_setup():
     st = setup_status()
     if st["configured"]:
         return None
-    return {"ok": False, "setup_required": True,
-            "error": "Setup is not done on this computer yet. STOP: do not continue with the user's request. "
-                     "Run the `setup` skill (/video2aeo:setup) first, then retry this step.",
-            "missing": st["missing"], "unreadable": st["unreadable"], "user_dir": st["user_dir"]}
+    if st["project_choice_needed"]:
+        why = ("Several projects are set up and this folder does not belong to one of them. STOP: ask the user which "
+               "project to use (setup_status.projects) and call setup_status with that `project`, then retry.")
+    elif st["needs_review"]:
+        why = ("This folder holds project settings this computer has not used yet. STOP: run the `setup` skill – the "
+               "user reviews them and confirms (trust_project) – then retry this step.")
+    else:
+        why = ("Setup is not done for this project yet. STOP: do not continue with the user's request. "
+               "Run the `setup` skill (/video2aeo:setup) first, then retry this step.")
+    return {"ok": False, "setup_required": True, "error": why, "project": st["project"],
+            "missing": st["missing"], "unreadable": st["unreadable"], "settings_dir": st["settings_dir"]}
 
 
 # ----------------------------------------------------------------------------
@@ -187,19 +198,16 @@ def slugify(text: str, max_len: int = 40) -> str:
     return s[:max_len].strip("-")
 
 
-def load_config() -> dict:
-    """~/.video2aeo/config.json (episodes_root, youtube, wordpress); {} when missing or damaged."""
-    try:
-        data = load_json(USER_DIR / "config.json")
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+def team_config() -> dict:
+    """The active project's project.json (models, episodes_root relative to the project folder); {} when missing."""
+    p = PR.active()
+    return p.team_config() if p else {}
 
 
 def episodes_root():
-    """The saved episodes root as a Path, or None when setup has not stored one yet."""
-    v = load_config().get("episodes_root")
-    return Path(v).expanduser() if isinstance(v, str) and v.strip() else None
+    """The active project's episodes root as a Path, or None when setup has not stored one yet."""
+    p = PR.active()
+    return p.episodes_root() if p else None
 
 
 MODEL_ALIASES = ("haiku", "sonnet", "opus", "fable", "inherit")
@@ -232,11 +240,11 @@ def _models_errors(user, table: dict) -> list:
 
 def resolve_models(user=None) -> dict:
     """The model for every delegated operation: user override > user profile > plugin default profile.
-    `user` defaults to the `models` section of ~/.video2aeo/config.json. Invalid entries are ignored and listed
+    `user` defaults to the `models` section of the project's project.json. Invalid entries are ignored and listed
     under `errors`, so a typo never stops an episode. Each operation carries `fallback` (the next tier up or "")."""
     table = load_json(PLUGIN_ROOT / "config" / "models.json")
     if user is None:
-        user = load_config().get("models")
+        user = team_config().get("models")
     errors = _models_errors(user, table)
     user = user if isinstance(user, dict) else {}
     profiles = list(table["operations"][next(iter(table["operations"]))]["profiles"])
@@ -437,33 +445,35 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
-def user_dir_writable() -> bool:
-    """Can the settings folder be written? Checks the folder or its nearest existing parent, without creating it."""
-    probe = USER_DIR
+def user_dir_writable(folder: Path | None = None) -> bool:
+    """Can the folder (default: the user folder) be written? Checks it or its nearest existing parent, without creating it."""
+    probe = Path(folder) if folder else PR.user_home()
     while not probe.exists() and probe != probe.parent:
         probe = probe.parent
     return os.access(probe, os.W_OK)
 
 
 def setup_status() -> dict:
-    """Has the one-time brand setup been done? Used by every user-facing skill as its preflight check.
+    """Has the brand setup of the active project been done? Used by every user-facing skill as its preflight check.
     Never raises on a damaged file – it reports it under `unreadable` so setup can repair it."""
+    project = PR.active()
+    sd = project.settings_dir if project else None
     unreadable = []
     try:
         brand = load_brand()
     except (OSError, ValueError) as ex:
         unreadable.append(f"brand.json: {ex}")
         brand = load_json(PLUGIN_ROOT / "config" / "brand.json")
-    marker = USER_DIR / SETUP_FILE
+    marker = sd / SETUP_FILE if sd else None
     info = {}
-    if marker.exists():
+    if marker and marker.exists():
         try:
             info = load_json(marker)
         except (OSError, ValueError) as ex:
             unreadable.append(f"{SETUP_FILE}: {ex}")
-    guidelines_path = USER_DIR / "guidelines.md"
+    guidelines_path = sd / "guidelines.md" if sd else None
     try:
-        guidelines_md = guidelines_path.read_text(encoding="utf-8") if guidelines_path.exists() else ""
+        guidelines_md = guidelines_path.read_text(encoding="utf-8") if guidelines_path and guidelines_path.exists() else ""
     except OSError as ex:
         unreadable.append(f"guidelines.md: {ex}")
         guidelines_md = ""
@@ -478,17 +488,28 @@ def setup_status() -> dict:
         warnings.append(f"description.promo_position must be one of {PROMO_POSITIONS}.")
     done = bool(info.get("completed"))
     try:
-        gl = load_json(USER_DIR / "glossary.json") if (USER_DIR / "glossary.json").exists() else {}
+        gl = load_json(sd / "glossary.json") if sd and (sd / "glossary.json").exists() else {}
     except (OSError, ValueError):
         gl = {}
     glossary_entries = sum(len(gl.get(k) or []) for k in ("fixes", "names", "sponsor_read_markers"))
     if not glossary_entries:
         warnings.append("The brand glossary is empty – ask for brand, people and product names, common caption "
                         "mistakes and sponsor-read markers (setup step 3).")
+    projects = PR.list_projects()
+    needs_review = bool(project and not project.trusted)
+    mig = PR.migration_info()
     return {
-        "configured": done and not missing and not unreadable,
+        "configured": done and not missing and not unreadable and not needs_review,
         "setup_completed": done,
-        "user_dir": str(USER_DIR),
+        "project": project.summary() if project else None,
+        "projects": projects,
+        "project_choice_needed": project is None and bool(projects),
+        "needs_review": needs_review,
+        "migrated": PR.migration_notice(project),
+        "migration_error": mig.get("error", ""),
+        "settings_dir": str(sd or ""),
+        "settings_dir_writable": user_dir_writable(sd) if sd else user_dir_writable(),
+        "user_dir": str(PR.user_home()),
         "user_dir_writable": user_dir_writable(),
         "missing": missing,
         "required_missing": required_missing,
@@ -533,14 +554,28 @@ def expand_dotted(d: dict) -> dict:
 
 def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelines_md: str | None = None,
                guidelines_off: list | None = None, episodes_root: str | None = None,
-               models: dict | None = None, guidelines_files: dict | None = None, replace: bool = False) -> dict:
-    """Write the user's brand files to USER_DIR (fixed file names only).
+               models: dict | None = None, guidelines_files: dict | None = None, replace: bool = False,
+               create: dict | None = None) -> dict:
+    """Write the user's brand files to the active project's settings folder (fixed file names only).
+    create={name, location: project|profile|custom, project_folder, settings_dir?, id?} makes a new project first and
+    writes into it (with no project at all, a profile project named after the channel is made).
     brand/glossary are merged over any existing file; omitted arguments keep what is saved.
     replace=True (importing a colleague's setup) writes every team item exactly as given and clears the ones not given
     – brand, glossary, guidelines.md, guidelines/*.md, guidelines_off, models – after copying the current files into a
     backup-<timestamp>/ folder. Skipped optional fields are saved as empty text. Everything is validated before
     anything is written."""
     errors = []
+    project = PR.active()
+    if create is not None:
+        if not isinstance(create, dict) or create.get("location", "profile") not in PR.LOCATIONS:
+            errors.append(f"create must be an object with location one of {list(PR.LOCATIONS)}.")
+        project = None
+    elif project is None and PR.list_projects():
+        errors.append("Several projects are set up and none is chosen: pass `project` (setup_status.projects) or `create`.")
+    elif project is not None and not project.trusted:
+        errors.append("These settings were found in the project folder and are not reviewed yet: show them to the user "
+                      "and call trust_project first.")
+    sd = project.settings_dir if project else None
     if replace and not isinstance(brand, dict):
         errors.append("replace needs the full brand.")
     if guidelines_files is not None:
@@ -604,8 +639,8 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                                            or folder == OTHER_SERIES):
                     errors.append(f"formats.{pid}.folder must be a short Latin slug (a-z, 0-9, '-'), got {folder!r}.")
             try:
-                known = ({} if replace else load_json(USER_DIR / "brand.json").get("formats") or {}
-                         if (USER_DIR / "brand.json").exists() else {})
+                known = ({} if replace or sd is None else load_json(sd / "brand.json").get("formats") or {}
+                         if (sd / "brand.json").exists() else {})
             except (OSError, ValueError, AttributeError):
                 known = {}
             used: dict = {}
@@ -617,6 +652,15 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
 
     if errors:
         return {"ok": False, "errors": errors, **setup_status()}
+    if project is None:
+        spec = create if isinstance(create, dict) else {}
+        name = str(spec.get("name") or _get(brand or {}, ("channel",)) or "").strip()
+        project, errs = PR.create_project(name, spec.get("location", "profile"), spec.get("project_folder"),
+                                          spec.get("settings_dir"), spec.get("id"))
+        if errs:
+            return {"ok": False, "errors": errs, **setup_status()}
+        PR.set_active(project)
+        sd = project.settings_dir
 
     def read_or_set_aside(path: Path) -> dict:
         """A damaged settings file is kept as <name>.broken and replaced, so setup can always repair the folder."""
@@ -633,10 +677,10 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
 
     writes: dict = {}
     broken: list = []
-    marker_path = USER_DIR / SETUP_FILE
+    marker_path = sd / SETUP_FILE
     old_marker = read_or_set_aside(marker_path)
     for name, data in (("brand.json", brand), ("glossary.json", glossary)):
-        path = USER_DIR / name
+        path = sd / name
         if data is None and not replace and not (name == "brand.json" and path.exists()):
             continue
         merged = _deep_merge({} if replace else read_or_set_aside(path), data or {})
@@ -648,16 +692,21 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                     _set(merged, p, "")
         writes[path] = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
 
+    team_path = project.team_config_path()
+    machine_root = None  # the episodes folder of this computer (projects.json), written after the files
     if root_path is not None:
-        cfg_path = USER_DIR / "config.json"
-        cfg = read_or_set_aside(cfg_path)
-        cfg["episodes_root"] = str(root_path)
-        writes[cfg_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+        pf = project.project_folder.resolve() if project.project_folder else None
+        shared = project.location in ("project", "custom") and pf is not None and PR._inside(root_path, pf)
+        if project.legacy or shared:
+            cfg = read_or_set_aside(team_path)
+            cfg["episodes_root"] = str(root_path) if project.legacy else os.path.relpath(root_path, pf)
+            writes[team_path] = json.dumps(cfg, ensure_ascii=False, indent=2) + "\n"
+        machine_root = "" if shared else str(root_path)
 
     if replace and models is None:
         models = {}
     if models is not None:  # replaces the saved section; {} goes back to the plugin defaults
-        cfg_path = USER_DIR / "config.json"
+        cfg_path = team_path
         cfg = read_or_set_aside(cfg_path) if cfg_path not in writes else json.loads(writes[cfg_path])
         if models:
             cfg["models"] = {k: v for k, v in models.items() if v not in ("", None, {})}
@@ -667,10 +716,10 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
 
     deletes: list = []
     if guidelines_md is not None and (guidelines_md.strip() or not replace):
-        writes[USER_DIR / "guidelines.md"] = guidelines_md.rstrip() + "\n"
+        writes[sd / "guidelines.md"] = guidelines_md.rstrip() + "\n"
     elif replace:
-        deletes.append(USER_DIR / "guidelines.md")
-    gdir = USER_DIR / "guidelines"
+        deletes.append(sd / "guidelines.md")
+    gdir = sd / "guidelines"
     for name, text in (guidelines_files or {}).items():
         writes[gdir / name] = text.rstrip() + "\n"
     if replace:
@@ -681,15 +730,15 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
                                      ensure_ascii=False, indent=2) + "\n"
     backup = None
     try:
-        USER_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        backup = _backup_team_files() if replace else None
+        sd.mkdir(mode=0o700, parents=True, exist_ok=True)
+        backup = _backup_team_files(project) if replace else None
         if replace:  # until the new marker is written last, a half-finished import must not count as configured
             marker_path.unlink(missing_ok=True)
         for path in broken:
             os.replace(path, path.with_name(path.name + ".broken"))
-        g = USER_DIR / "guidelines.md"
+        g = sd / "guidelines.md"
         if not replace and g in writes and g.exists() and g.read_text(encoding="utf-8") != writes[g]:
-            _write_atomic(USER_DIR / "guidelines.md.bak", g.read_text(encoding="utf-8"))
+            _write_atomic(sd / "guidelines.md.bak", g.read_text(encoding="utf-8"))
         for path, text in writes.items():  # setup.json last: a failure never marks setup as done
             if path != marker_path:
                 path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -697,8 +746,11 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
         for path in deletes:
             path.unlink(missing_ok=True)
         _write_atomic(marker_path, writes[marker_path])
+        if machine_root is not None and not project.legacy:
+            PR.set_machine_value(project, "episodes_root", machine_root)
+        PR.clear_migration_notice(project)
     except OSError as ex:
-        errors = [f"Could not write to {USER_DIR}: {ex}"]
+        errors = [f"Could not write to {sd}: {ex}"]
         if backup:
             errors.append(f"The previous settings are kept in {backup}; import that folder to restore them.")
         return {"ok": False, "errors": errors, **({"backup": str(backup)} if backup else {}), **setup_status()}
@@ -712,21 +764,22 @@ def save_setup(brand: dict | None = None, glossary: dict | None = None, guidelin
 TEAM_FILES = ("brand.json", "glossary.json", "guidelines.md", SETUP_FILE)
 
 
-def _backup_team_files() -> Path | None:
-    """Copy the team files into a new backup-<timestamp>/ folder of USER_DIR before a replace, plus the `models` of
-    config.json (which a replace changes) – never its sign-in details. Never overwrites an earlier backup. None when
-    there is nothing to keep."""
-    present = [USER_DIR / n for n in TEAM_FILES if (USER_DIR / n).is_file()]
-    models = load_config().get("models")
-    gdir = USER_DIR / "guidelines"
+def _backup_team_files(project) -> Path | None:
+    """Copy the team files into a new backup-<timestamp>/ folder of the settings folder before a replace, plus the
+    saved `models` (which a replace changes) as config.json – never sign-in details. Never overwrites an earlier
+    backup. None when there is nothing to keep."""
+    sd = project.settings_dir
+    present = [sd / n for n in TEAM_FILES if (sd / n).is_file()]
+    models = project.team_config().get("models")
+    gdir = sd / "guidelines"
     guides = sorted(gdir.glob("*.md")) if gdir.is_dir() else []
     if not present and not guides and not models:
         return None
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest, n = USER_DIR / f"backup-{stamp}", 1
+    dest, n = sd / f"backup-{stamp}", 1
     while dest.exists():
         n += 1
-        dest = USER_DIR / f"backup-{stamp}-{n}"
+        dest = sd / f"backup-{stamp}-{n}"
     (dest / "guidelines").mkdir(mode=0o700, parents=True) if guides else dest.mkdir(mode=0o700)
     for f in present:
         shutil.copy2(f, dest / f.name)

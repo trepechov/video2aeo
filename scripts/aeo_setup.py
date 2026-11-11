@@ -64,12 +64,12 @@ def check_environment() -> dict:
     if not py_ok:
         problems.append(f"Python {platform.python_version()} is too old – 3.9 or newer is needed.")
     if not writable:
-        problems.append(f"The folder {L.USER_DIR} cannot be written – brand settings cannot be saved.")
+        problems.append(f"The folder {L.PR.user_home()} cannot be written – settings cannot be saved.")
     return {
         "ok": not problems,
         "problems": problems,
         "python": {"version": platform.python_version(), "executable": sys.executable, "ok": py_ok},
-        "user_dir": str(L.USER_DIR),
+        "user_dir": str(L.PR.user_home()),
         "user_dir_writable": writable,
         # Packages the subtitle download still lacks; the `install_subtitle_tools` tool installs them for the user.
         "missing_subtitle_tools": missing,
@@ -257,7 +257,8 @@ def read_setup_bundle(path: str) -> dict:
 def _secret_warnings(texts: dict) -> list:
     """Things in the files about to be shared that look like credentials: credential-like key names, or the
     WordPress application password of config.json (the site address and user name are not secret)."""
-    wp = L.load_config().get("wordpress")
+    project = L.PR.active()
+    wp = project.credentials().get("wordpress") if project else None
     password = wp.get("app_password") if isinstance(wp, dict) else None
     out = []
     for name, body in texts.items():
@@ -282,18 +283,19 @@ def export_setup(out_dir: str) -> dict:
     if not dest.is_absolute() or not dest.is_dir() or dest.is_symlink() or not os.access(dest, os.W_OK):
         return {"ok": False, "errors": [f"{dest} must be an existing, writable folder (absolute path)."]}
     try:
-        texts = {n: (L.USER_DIR / n).read_text(encoding="utf-8") for n in ARCHIVE_TOP_FILES if (L.USER_DIR / n).is_file()}
-        gdir = L.USER_DIR / "guidelines"
+        sd = L.settings_dir()
+        texts = {n: (sd / n).read_text(encoding="utf-8") for n in ARCHIVE_TOP_FILES if (sd / n).is_file()}
+        gdir = sd / "guidelines"
         for f in sorted(gdir.glob("*.md")) if gdir.is_dir() else []:
             if L.GUIDELINE_FILE_RE.match(f.name) and not f.is_symlink():
                 texts[f"guidelines/{f.name}"] = f.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as ex:
-        return {"ok": False, "errors": [f"Could not read the settings in {L.USER_DIR}: {ex}"]}
+        return {"ok": False, "errors": [f"Could not read the settings in {L.settings_dir()}: {ex}"]}
     manifest = {"archive_format": ARCHIVE_FORMAT,
                 "plugin_version": L.load_json(L.PLUGIN_ROOT / ".claude-plugin" / "plugin.json").get("version", ""),
                 "exported": datetime.date.today().isoformat(),
                 "guidelines_off": st["guidelines_off"]}
-    models = L.load_config().get("models")
+    models = L.team_config().get("models")
     if isinstance(models, dict) and models:
         manifest["models"] = models
     texts[ARCHIVE_MANIFEST] = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"

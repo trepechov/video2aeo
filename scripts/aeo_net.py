@@ -66,11 +66,11 @@ def video_info(url: str) -> dict:
 # ----------------------------------------------------------------------------
 
 def _yt_cookie_args() -> list:
-    """Optional yt-dlp cookie options from ~/.video2aeo/config.json: {"youtube": {"cookies_from_browser": "chrome"}} or
+    """Optional yt-dlp cookie options from the user folder's config.json (~/.video2aeo, for every project): {"youtube": {"cookies_from_browser": "chrome"}} or
     {"youtube": {"cookies_file": "/path/cookies.txt"}}. Any logged-in YouTube account works – it only gets past the
     bot / IP checks; nothing is posted with it. Never put cookies in chat or in the repo."""
     try:
-        cfg = json.loads((L.USER_DIR / "config.json").read_text(encoding="utf-8")).get("youtube", {})
+        cfg = json.loads((L.PR.user_home() / "config.json").read_text(encoding="utf-8")).get("youtube", {})
     except (OSError, ValueError):
         return []
     if cfg.get("cookies_file"):
@@ -190,7 +190,9 @@ def fetch_transcript(url: str, out_dir: Path, lang: str = "bg") -> dict:
 
 def _load_wp_config(path: Path | None) -> dict:
     candidates = [path] if path else []
-    candidates.append(L.USER_DIR / "config.json")
+    project = L.PR.active()
+    if project is not None:  # this project's sign-in: ~/.video2aeo/credentials/<id>.json
+        candidates.append(project.credentials_path())
     for c in candidates:
         if c and Path(c).exists():
             return json.loads(Path(c).read_text(encoding="utf-8")).get("wordpress", {})

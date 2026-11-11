@@ -9,6 +9,8 @@ new="${1:?usage: dev/release.sh <new-version, e.g. 0.2.1>}"
 echo "== checks"
 python3 dev/smoke.py
 /usr/bin/python3 dev/smoke.py
+python3 dev/smoke_projects.py
+/usr/bin/python3 dev/smoke_projects.py
 if command -v npm >/dev/null; then
   (cd dev && npm i --silent && npm run --silent validate-blocks)
 else

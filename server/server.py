@@ -7,6 +7,7 @@ can call them from Claude Code (desktop Code mode or CLI) on the marketer's comp
 by Claude; these tools only fetch, assemble and check.
 """
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -17,6 +18,7 @@ import aeo_lib as L  # noqa: E402
 import aeo_net as N  # noqa: E402
 import aeo_setup as S  # noqa: E402
 import aeo_pipeline as P  # noqa: E402
+import aeo_project as PR  # noqa: E402
 
 SERVER = {"name": "video2aeo", "version": L.load_json(ROOT / ".claude-plugin" / "plugin.json")["version"]}
 
@@ -26,9 +28,13 @@ OUTPUTS = {"type": "array", "items": {"type": "string", "enum": ["youtube", "wor
 DIR = {"type": "string", "description": "Absolute path of the episode folder as returned by episode_path: <episodes root>/<series folder>/<yyyy-mm>-<series>-<nn>-<slug>"}
 TOOLS = [
     {"name": "setup_status",
-     "description": "Preflight check: has the one-time brand setup been done on this computer? Returns configured, missing "
-                    "placeholders, unreadable files, warnings and the current saved values (to pre-fill setup). "
-                    "Call it first in every video2aeo workflow; if configured is false run the setup skill.",
+     "description": "Preflight check, first in every video2aeo workflow: which project this session works on and whether its setup "
+                    "is done. Pass the session folder (run `pwd`) as cwd; the project found is remembered for the rest of the session. "
+                    "Returns project {id, name, settings_dir, location}, projects (all on this computer), project_choice_needed (ask "
+                    "the user which project, then call again with `project`), needs_review (settings found in the folder that this "
+                    "computer has not used yet – run the setup skill), migrated (the old single-project settings were converted – say "
+                    "so once), configured, missing placeholders, unreadable files, warnings and the current saved values. If "
+                    "configured is false run the setup skill.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "check_environment",
      "description": "Check this computer (read-only): Python version and path used by the plugin, whether ~/.video2aeo/ can be "
@@ -58,7 +64,8 @@ TOOLS = [
                     "fetch_transcript reports missing_subtitle_tools.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "save_setup",
-     "description": "Write the user-approved setup answers to ~/.video2aeo/ (brand.json, glossary.json, guidelines.md, setup.json). "
+     "description": "Write the user-approved setup answers to the project's settings folder (brand.json, glossary.json, guidelines.md, "
+                    "setup.json; models in project.json). With `create` it first makes a new project in the chosen location. "
                     "brand/glossary are merged over existing files (replace=true: written as given, current files backed up); omitted "
                     "arguments keep what is saved; skipped optional fields "
                     "are saved empty; the previous guidelines.md is kept as guidelines.md.bak. Only call after the user approved "
@@ -71,9 +78,29 @@ TOOLS = [
          "guidelines_off": {"type": "array", "items": {"type": "string"},
                             "description": "Ids of adjustable guidelines the user switched off (see the guideline catalog)"},
          "models": {"type": "object", "description": "Optional model choice for delegated work, only when the user asks to change it: {\"profile\": \"fast\"|\"balanced\"|\"quality\", \"overrides\": {\"<operation>\": \"haiku\"|\"sonnet\"|\"opus\"|\"fable\"|\"inherit\"}}. Replaces the saved choice; {} goes back to the plugin defaults. Operations and current values: setup_status.models."},
-         "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>); saved in config.json. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."},
-         "guidelines_files": {"type": "object", "description": "Brand guideline files for ~/.video2aeo/guidelines/: file name (e.g. youtube-description.md) -> full text"},
+         "episodes_root": {"type": "string", "description": "Absolute path of the one folder that holds all episodes (<root>/<series folder>/<episode>). Inside the project folder of a project/custom location it is shared with the team (relative, project.json); otherwise it is this computer's choice. Format profiles carry their series folder as brand.formats.<id>.folder (short Latin slug)."},
+         "guidelines_files": {"type": "object", "description": "Brand guideline files for the settings folder's guidelines/: file name (e.g. youtube-description.md) -> full text"},
+         "create": {"type": "object", "description": "Make a new project and save into it (only after the user answered where to keep its settings): "
+                    "{\"name\": \"Show name\", \"location\": \"project\" (<project_folder>/.video2aeo, can be committed) | \"profile\" "
+                    "(~/.video2aeo/projects/<id>, this computer only) | \"custom\" (settings_dir), \"project_folder\": \"<absolute path, "
+                    "usually the session folder>\", \"settings_dir\": \"<absolute, or relative to project_folder; custom only>\"}"},
          "replace": {"type": "boolean", "description": "Importing a colleague's setup: write brand, glossary, guidelines, guidelines_off and models exactly as given and clear what is not given, after backing up the current files into backup-<timestamp>/. Default false (merge)."}}}},
+    {"name": "list_projects",
+     "description": "The projects set up on this computer: id, name, location (project | profile | custom), settings_dir, folders, "
+                    "episodes_root, default. Read-only. Used for „which project?“ and „show my projects“.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "trust_project",
+     "description": "Remember the settings found in this session's project folder (setup_status.needs_review) as reviewed, after the "
+                    "user saw them in full (same review as an import) and said yes. Then setup asks only this computer's questions.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "move_project",
+     "description": "Move a project's settings to another location after the user's yes: copies, checks the copy, switches this "
+                    "computer's list (and the link file in the project folder), then renames the old folder to <name>-moved-<date> "
+                    "(never deleted). Sign-ins stay in the user folder.",
+     "inputSchema": {"type": "object", "required": ["project", "location"], "properties": {
+         "location": {"type": "string", "enum": ["project", "profile", "custom"]},
+         "settings_dir": {"type": "string", "description": "custom only: absolute, or relative to project_folder"},
+         "project_folder": {"type": "string", "description": "Absolute path of the project folder; defaults to the one saved for the project"}}}},
     {"name": "workspace_status",
      "description": "Is the folder this session runs in a good place for episode files? Call right after setup_status in /video2aeo:episode and "
                     "/video2aeo:wp-article, passing the session folder (run `pwd`). Returns ok, status (ok | inside_episode | suspicious | unknown | "
@@ -134,7 +161,7 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {"episode_dir": DIR, "outputs": OUTPUTS}, "required": ["episode_dir"]}},
     {"name": "wp_push_draft",
      "description": "Create or update the article in WordPress as a DRAFT (never publishes). Requires the article approval (gates.wordpress) and "
-                    "~/.video2aeo/config.json. Only call when the user explicitly asks to push the draft.",
+                    "the project's sign-in in ~/.video2aeo/credentials/<project id>.json. Only call when the user explicitly asks to push the draft.",
      "inputSchema": {"type": "object", "properties": {"episode_dir": DIR}, "required": ["episode_dir"]}},
 ]
 
@@ -144,7 +171,11 @@ GATED = {"get_video_info", "fetch_transcript", "import_transcript", "render_pack
 # Tools that write into an episode folder: it must sit in the episodes-root layout (or be an existing episode).
 GUARDED = {"fetch_transcript", "import_transcript", "render_package", "validate_package", "wp_push_draft",
            "split_transcript", "merge_transcript", "progress_note"}
+# Every tool can name the session folder and the project; the project is resolved per call (see _project_for).
 for _tool in TOOLS:
+    props = _tool["inputSchema"]["properties"]
+    props.setdefault("cwd", {"type": "string", "description": "The session's working folder (output of `pwd`); finds the project"})
+    props.setdefault("project", {"type": "string", "description": "Id of the project the user chose (setup_status.projects)"})
     if _tool["name"] in GUARDED:
         _tool["inputSchema"]["properties"]["allow_outside_root"] = {
             "type": "boolean", "description": "Only after the user explicitly confirmed an episode folder outside the episodes root"}
@@ -154,9 +185,61 @@ def _brand():
     return L.load_brand()
 
 
+# The project of this session: set by the first call that names a folder or a project (normally setup_status).
+SESSION = {"project": None}
+BINDING = {"setup_status", "workspace_status", "save_setup", "trust_project"}
+
+
+def _project_for(name, args):
+    """(project, error) for a call. An episode folder decides by itself; a project found for it that differs from
+    the session's project is refused (never mix two brands)."""
+    bound = SESSION["project"]
+    if args.get("project"):
+        p = PR.resolve(project_id=args["project"])
+        if p is None:
+            return None, {"ok": False, "error": f"Unknown project {args['project']!r}.", "projects": PR.list_projects()}
+        return p, None
+    if args.get("episode_dir"):
+        p = PR.resolve(args["episode_dir"], strong_only=True)
+        if p is not None and bound is not None and p.key != bound.key:
+            return None, {"ok": False, "project_mismatch": True,
+                          "error": f"This episode belongs to the project {p.name!r}, but this session works on {bound.name!r}. "
+                                   "STOP: do not mix two projects – open the episode's project folder in a new session, or ask the "
+                                   "user which project to use and call setup_status with it.",
+                          "episode_project": p.summary(), "session_project": bound.summary()}
+        return p or bound or PR.resolve(args["episode_dir"]), None
+    if args.get("cwd"):
+        return PR.resolve(args["cwd"]), None
+    return (bound or PR.resolve(os.getcwd())), None
+
+
 def call(name, args):
+    project, err = _project_for(name, args)
+    if err:
+        return err
+    with PR.using(project):
+        out = _call(name, args, project)
+        now = PR.active()  # save_setup(create=…) switches to the new project
+    if now is not None and (name in BINDING or args.get("project")):
+        SESSION["project"] = now
+    return out
+
+
+def _call(name, args, project):
     if name == "setup_status":
         return L.setup_status()
+    if name == "list_projects":
+        return {"ok": True, "projects": PR.list_projects(), "session_project": project.summary() if project else None}
+    if name == "trust_project":
+        if project is None or project.trusted:
+            return {"ok": False, "error": "There are no new project settings in this folder to confirm."}
+        PR.set_active(PR.trust_project(project))
+        return {"ok": True, **L.setup_status()}
+    if name == "move_project":
+        res = PR.move_project(args["project"], args["location"], args.get("settings_dir"), args.get("project_folder"))
+        if res.get("ok"):
+            PR.set_active(PR.resolve(project_id=args["project"]))
+        return res
     if name == "check_environment":
         return S.check_environment()
     if name == "install_subtitle_tools":
@@ -168,7 +251,7 @@ def call(name, args):
     if name == "save_setup":
         return L.save_setup(args.get("brand"), args.get("glossary"), args.get("guidelines_md"), args.get("guidelines_off"),
                             args.get("episodes_root"), args.get("models"), args.get("guidelines_files"),
-                            args.get("replace") is True)
+                            args.get("replace") is True, args.get("create"))
     if name == "workspace_status":
         return L.classify_workspace(args.get("cwd") or None)
     if name in GATED:

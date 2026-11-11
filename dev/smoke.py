@@ -49,7 +49,7 @@ env = S.check_environment()
 check(env["ok"] and env["python"]["ok"], f"check_environment not ok: {env['problems']}")
 check(set(env) == {"ok", "problems", "python", "user_dir", "user_dir_writable", "missing_subtitle_tools", "install_command"},
       f"check_environment fields: {sorted(env)}")
-check(not L.USER_DIR.exists(), "check_environment must not create the settings folder")
+check(not L.PR.user_home().exists(), "check_environment must not create the settings folder")
 
 # --- subtitle tools: offered, never installed silently; the installer is exercised with pip mocked ------------
 import aeo_net as N
@@ -112,7 +112,7 @@ st = L.setup_status()
 check(not st["configured"] and not st["setup_completed"], "fresh folder must not be configured")
 check(st["required_missing"] == ["channel", "topics"], f"required_missing: {st['required_missing']}")
 check(L.save_setup()["ok"] is False, "empty save_setup must fail")
-check(not L.USER_DIR.exists(), "failed save_setup must not write")
+check(not L.PR.user_home().exists(), "failed save_setup must not write")
 bad = L.save_setup(brand={"channel": "X"}, guidelines_off=["number-traceability"])
 check(bad["ok"] is False and "Unknown or locked" in bad["errors"][0], "locked/unknown guideline id must be rejected")
 check(L.save_setup(brand={"description": {"promo_position": "middle"}})["ok"] is False, "bad promo_position rejected")
@@ -121,7 +121,7 @@ check(L.save_setup(brand={"description": {"promo_position": "middle"}})["ok"] is
 r = L.save_setup(brand={"channel": "Demo", "topics": "money", "description.promo": "PROMO TEXT"},
                  guidelines_md="# House\n", guidelines_off=["euro-equivalents"])
 check(r["ok"] and r["configured"], f"setup with skipped optional fields must be configured: {r.get('missing')}")
-saved = L.load_json(L.USER_DIR / "brand.json")
+saved = L.load_json(L.settings_dir() / "brand.json")
 check(saved["description"]["promo"] == "PROMO TEXT" and "description.promo" not in saved, "dotted key not expanded")
 check(saved["organization"]["logo"] == "" and saved["description"]["schedule"] == "", "optional fields not blanked")
 
@@ -165,16 +165,16 @@ check(r["ok"] and r["current"]["format"]["links"] == ["https://example.org/about
 # --- partial re-run keeps earlier answers; guidelines.md is backed up ------------------------------
 r = L.save_setup(brand={"channel": "Demo 2"})
 check(r["guidelines_off"] == ["euro-equivalents"], "guidelines_off must survive a save without it")
-check(L.load_json(L.USER_DIR / "brand.json")["description"]["promo"] == "PROMO TEXT", "promo lost on re-run")
+check(L.load_json(L.settings_dir() / "brand.json")["description"]["promo"] == "PROMO TEXT", "promo lost on re-run")
 L.save_setup(guidelines_md="# House v2\n")
-check((L.USER_DIR / "guidelines.md.bak").read_text(encoding="utf-8") == "# House\n", "guidelines.md not backed up")
+check((L.settings_dir() / "guidelines.md.bak").read_text(encoding="utf-8") == "# House\n", "guidelines.md not backed up")
 check(L.setup_status()["current"]["guidelines_md"] == "# House v2\n", "status must return current guidelines")
 
 # --- damaged files: status reports, save repairs ----------------------------------------------------
-(L.USER_DIR / "setup.json").write_text('{"compl', encoding="utf-8")
+(L.settings_dir() / "setup.json").write_text('{"compl', encoding="utf-8")
 st = L.setup_status()
 check(not st["configured"] and st["unreadable"], "corrupt setup.json must be reported, not raised")
-(L.USER_DIR / "brand.json").write_text("not json", encoding="utf-8")
+(L.settings_dir() / "brand.json").write_text("not json", encoding="utf-8")
 check(L.setup_status()["unreadable"], "corrupt brand.json must be reported")
 r = L.save_setup(brand={"channel": "Demo", "topics": "money"})
 check(r["ok"] and r["configured"] and "brand.json.broken" in r["set_aside"], f"save must repair: {r}")
@@ -189,16 +189,14 @@ check(L.save_setup(episodes_root="relative/path")["ok"] is False, "relative epis
 check(L.save_setup(episodes_root=str(TMP / "nope"))["ok"] is False, "missing episodes_root folder rejected")
 check(L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "Bad Slug"}}})["ok"] is False, "bad folder slug rejected")
 check(L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "_other"}}})["ok"] is False, "_other reserved")
-cfgp = L.USER_DIR / "config.json"
-cfgp.write_text('{"wordpress": {"site": "x"}}', encoding="utf-8")
+projp = L.settings_dir() / "project.json"
+proj_before = L.load_json(projp)
 r = L.save_setup(brand={"formats": {"clips": {"label": "Clips", "folder": "clips"}}}, episodes_root=str(root))
 check(r["ok"] and r["current"]["episodes_root"] == str(root.resolve()), f"episodes_root not saved: {r.get('errors')}")
-check(L.load_json(cfgp) == {"wordpress": {"site": "x"}, "episodes_root": str(root.resolve())}, "config.json keys must be preserved")
+check(L.load_json(projp) == proj_before, "a profile project keeps its episodes folder in this computer's list, not in project.json")
+check(L.PR.list_projects()[0]["episodes_root"] == str(root.resolve()), "episodes_root in projects.json")
 check(r["current"]["series_folders"] == {"clips": "clips"}, f"series_folders: {r['current']['series_folders']}")
 check(L.save_setup(brand={"formats": {"talk": {"label": "Talk", "folder": "clips"}}})["ok"] is False, "duplicate series folder rejected")
-cfgp.unlink()
-L.save_setup(episodes_root=str(root))
-cfgp.write_text(json.dumps({"episodes_root": str(root.resolve())}), encoding="utf-8")
 
 b = L.load_brand()
 ws = L.classify_workspace(root)
@@ -331,7 +329,7 @@ check(any("glossary" in w for w in L.setup_status()["warnings"]) or L.setup_stat
 
 # --- optional yt-dlp cookies from config.json --------------------------------------------------------
 import aeo_net as N  # noqa: E402
-cfgp = L.USER_DIR / "config.json"
+cfgp = L.PR.user_home() / "config.json"
 cfgp.parent.mkdir(parents=True, exist_ok=True)
 cfgp.write_text('{"youtube": {"cookies_from_browser": "chrome"}}', encoding="utf-8")
 check(N._yt_cookie_args() == ["--cookies-from-browser", "chrome"], "cookies_from_browser not passed")
@@ -439,16 +437,11 @@ root = TMP / "pipeline-root"
 (root / "_other").mkdir(parents=True)
 os.replace(long_ep, root / "_other" / "2026-10-other-01-long")
 os.replace(gate_ep, root / "_other" / "2026-10-other-02-done")
-L.USER_DIR.mkdir(parents=True, exist_ok=True)
-cfg_file = L.USER_DIR / "config.json"
-cfg_before = cfg_file.read_text(encoding="utf-8") if cfg_file.exists() else None
-cfg_file.write_text(json.dumps({"episodes_root": str(root)}), encoding="utf-8")
+root_before = str(L.episodes_root())
+L.PR.set_machine_value(L.PR.active(), "episodes_root", str(root))
 found = P.find_unfinished()
 check(found and found["episode_dir"].endswith("2026-10-other-01-long"), f"find_unfinished skips the done episode: {found}")
-if cfg_before is None:
-    cfg_file.unlink()
-else:
-    cfg_file.write_text(cfg_before, encoding="utf-8")
+L.PR.set_machine_value(L.PR.active(), "episodes_root", root_before)
 
 # --- models: plugin defaults unless the user overrides -------------------------------------------------
 m = L.resolve_models()
@@ -465,9 +458,9 @@ check(not bad["ok"] and any("models.profile" in e for e in bad["errors"]), "inva
 ok = L.save_setup(models={"profile": "quality", "overrides": {"transcript_edit": "haiku"}})
 check(ok["ok"] and ok["models"]["operations"]["transcript_edit"]["source"] == "override"
       and ok["models"]["operations"]["knowledge_map_sections"]["model"] == "opus", f"models saved: {ok.get('models')}")
-check(L.load_json(L.USER_DIR / "config.json")["models"]["profile"] == "quality", "models stored in config.json")
+check(L.load_json(L.settings_dir() / "project.json")["models"]["profile"] == "quality", "models stored in project.json")
 ok = L.save_setup(models={})
-check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.load_config(), "models {} resets to defaults")
+check(ok["ok"] and ok["models"]["profile_source"] == "default" and "models" not in L.team_config(), "models {} resets to defaults")
 
 # --- import of a settings folder and a zip without manifest, unrecognised keys, empty disclaimer line --------------
 import zipfile  # noqa: E402
@@ -493,10 +486,11 @@ top, foot = L._promo_and_footer(desc(disclaimer_url=""))
 check("отказ от отговорност" not in foot and "{DISCLAIMER_URL}" not in foot, f"empty disclaimer line must be dropped: {foot!r}")
 
 # --- setup archive: export on one computer, review + replace-import on another ------------------------------------
-real_user_dir = L.USER_DIR
+real_home = os.environ["VIDEO2AEO_HOME"]
 def use_home(name):
-    L.USER_DIR = TMP / name
-    return L.USER_DIR
+    os.environ["VIDEO2AEO_HOME"] = str(TMP / name)
+    L.PR.reset_active()
+    return TMP / name
 try:
     a = use_home("team-a")
     (TMP / "eps-a").mkdir()
@@ -506,12 +500,12 @@ try:
                      guidelines_off=[L.ADJUSTABLE_GUIDELINES[0]], episodes_root=str(TMP / "eps-a"),
                      models={"profile": "fast"})
     check(r["ok"] and r["configured"], f"team-a setup: {r.get('errors') or r.get('missing')}")
-    cfg = L.load_json(a / "config.json")
     L.save_setup(brand={"site": {"base_url": "https://wp.example"}})
-    cfg = L.load_json(a / "config.json")
-    cfg.update(wordpress={"base_url": "https://wp.example", "username": "ed", "app_password": "SECRET-PASS-123"},
-               youtube={"cookies_file": "/Users/someone/cookies-SECRET.txt"})
-    (a / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+    creds = L.PR.active().credentials_path()
+    creds.parent.mkdir(parents=True, exist_ok=True)
+    creds.write_text(json.dumps({"wordpress": {"base_url": "https://wp.example", "username": "ed",
+                                               "app_password": "SECRET-PASS-123"}}), encoding="utf-8")
+    (a / "config.json").write_text(json.dumps({"youtube": {"cookies_file": "/Users/someone/cookies-SECRET.txt"}}), encoding="utf-8")
     (TMP / "share").mkdir()
     ex = S.export_setup(str(TMP / "share"))
     check(ex["ok"] and Path(ex["path"]).name.startswith("video2aeo-setup-testov-kanal-") and not ex["warnings"],
@@ -537,7 +531,7 @@ try:
     r = L.save_setup(brand=imp["brand"], glossary=imp["glossary"], guidelines_md=imp["guidelines_md"],
                      guidelines_files=imp["guidelines_files"], guidelines_off=imp["guidelines_off"], models=imp["models"],
                      episodes_root=str(TMP / "eps-b"), replace=True)
-    check(r["ok"] and r["configured"] and (b / "guidelines" / "youtube-description.md").read_text() == "# YT additions\n"
+    check(r["ok"] and r["configured"] and (L.settings_dir() / "guidelines" / "youtube-description.md").read_text() == "# YT additions\n"
           and "backup" not in r, f"replace-import into an empty home: {r.get('errors')}")
     same = ("configured", "guidelines_off", "models", "glossary_entries")
     status_b = {k: r[k] for k in same}
@@ -554,10 +548,11 @@ try:
     mini = S.read_setup_bundle(str(TMP / "mini"))
     check(mini["ok"] and "models" not in mini and "guidelines_off" not in mini, f"BOM brand-only folder: {mini}")
     r = L.save_setup(brand=mini["brand"], replace=True)
-    check(r["ok"] and r.get("backup") and not (b / "guidelines.md").exists()
-          and not list((b / "guidelines").glob("*.md")) and L.load_json(b / "glossary.json") == {}
-          and r["guidelines_off"] == [] and "models" not in L.load_json(b / "config.json")
-          and L.load_json(b / "config.json").get("episodes_root"), f"replace must clear and back up: {r.get('errors')}")
+    bs = L.settings_dir()
+    check(r["ok"] and r.get("backup") and not (bs / "guidelines.md").exists()
+          and not list((bs / "guidelines").glob("*.md")) and L.load_json(bs / "glossary.json") == {}
+          and r["guidelines_off"] == [] and "models" not in L.team_config()
+          and L.episodes_root(), f"replace must clear and back up: {r.get('errors')}")
     first_backup = Path(r["backup"])
     check((first_backup / "guidelines" / "youtube-description.md").exists() and (first_backup / "glossary.json").exists()
           and L.load_json(first_backup / "config.json") == {"models": {"profile": "fast"}},
@@ -653,7 +648,8 @@ try:
     ex3 = S.export_setup(str(TMP / "share"))
     check(ex3["ok"] and any("credentials" in w for w in ex3["warnings"]), f"secret-like key must warn: {ex3['warnings']}")
 finally:
-    L.USER_DIR = real_user_dir
+    os.environ["VIDEO2AEO_HOME"] = real_home
+    L.PR.reset_active()
 
 # --- launcher and SessionStart check without python3 on PATH (Windows-like) --------------------------
 def tool_path(extra):
