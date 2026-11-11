@@ -12,10 +12,14 @@ metadata:
 
 # /video2aeo:wp-article – knowledge-base article for an episode
 
-**STOP – preflight, before anything else:** call `setup_status`. If the tool is missing or fails to start, the helper
-is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue once the tools
-work. If `configured` is false (or `~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or
-call any other tool – run the `setup` skill now and only then continue with the user's request. The output tools also refuse to run
+**STOP – preflight, before anything else:** run `pwd` and call `setup_status(cwd)`. If the tool is missing or fails to
+start, the helper is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue
+once the tools work. If `project_choice_needed` is true, ask once which project to use (names from `projects`) and call
+`setup_status(cwd, project=<id>)`. If `configured` is false (or `needs_review` is true), do NOT read the transcript,
+write any text or call any other tool – run the `setup` skill now and only then continue with the user's request. Say
+the project once at the start („Проект: ‹project.name›“) so a wrong one is noticed. Pass `cwd` to every later tool
+call. A `project_mismatch` error means the episode belongs to another project: stop and tell the user. The settings
+folder below is `setup_status.settings_dir`. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 **Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,
@@ -36,8 +40,9 @@ created – it does not re-derive facts from the audio.
 
 Read, in this order: `${CLAUDE_PLUGIN_ROOT}/instructions/aeo-rules.md`,
 `${CLAUDE_PLUGIN_ROOT}/instructions/wordpress-article.md`, `${CLAUDE_PLUGIN_ROOT}/instructions/episode-schema.md`, the
-brand config (`config/brand.json` merged with `~/.video2aeo/brand.json`) and the user/brand instructions
-(`~/.video2aeo/guidelines.md`, `~/.video2aeo/guidelines/*.md`, notably `wordpress-article.md`). Respect the switched-off
+brand config (`config/brand.json` merged with `<settings folder>/brand.json`) and the user/brand instructions
+(`<settings folder>/guidelines.md`, `<settings folder>/guidelines/*.md`, notably `wordpress-article.md`). Tell every
+agent you delegate to the settings folder path. Respect the switched-off
 guideline ids from `setup_status.guidelines_off`.
 
 ## Steps

@@ -91,5 +91,5 @@ in `episode.json`, which stays untouched.
 ## Extending
 
 Add further rules here (image/alt-text policy, featured image, author box variants, category rules …). Brand-specific
-additions belong in `~/.video2aeo/guidelines/wordpress-article.md`. The exact block markup is documented in
+additions belong in `<settings folder>/guidelines/wordpress-article.md` (the project's settings folder). The exact block markup is documented in
 `skills/wp-article/references/gutenberg-blocks.md`.

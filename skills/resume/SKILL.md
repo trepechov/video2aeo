@@ -11,8 +11,10 @@ metadata:
 
 # /video2aeo:resume – continue an interrupted episode
 
-**STOP – preflight:** call `setup_status`. If the tool is missing or fails, follow the `doctor` skill first; if
-`configured` is false, run the `setup` skill first.
+**STOP – preflight:** run `pwd` and call `setup_status(cwd)`. If the tool is missing or fails, follow the `doctor` skill
+first; if `project_choice_needed` is true, ask which project and call `setup_status(cwd, project=<id>)`; if `configured`
+is false, run the `setup` skill first. With a folder argument, the episode's own project is used; a `project_mismatch`
+error means it belongs to another project – say so and stop.
 
 Arguments: an optional episode folder (absolute path) and the word `--unattended` (used by automated restarts: nobody
 answers questions).

@@ -34,27 +34,82 @@ Audience: marketers, not developers. Plain language, no jargon, no terminal.
 When this skill was started automatically by another video2aeo skill, finish the setup, then return to the user's
 original request and continue it.
 
+**Projects.** One computer can serve several projects (brands/shows). Each project has its own settings folder:
+inside the project folder (`<folder>/.video2aeo/`, can be committed with a repository – passwords never go there), in
+the user's profile (`~/.video2aeo/projects/<id>/`), or a folder the user picks. The plugin finds the project from the
+folder the task runs in. Always pass `cwd` (run `pwd`) to `setup_status`.
+
 ## 0. Start: status, then the route
 
-Call `setup_status` first.
+Call `setup_status(cwd)` first.
 - **The tool is missing or the call fails** – the plugin's helper did not start. Follow the `doctor` skill yourself
   (it owns the Python/Git install steps), then come back here. Do not interview the user while the tools are down –
   nothing could be saved.
-- **`user_dir_writable` is false** – the settings folder cannot be written: ask the user to pick a different home
-  folder (`VIDEO2AEO_HOME`) or contact IT, and stop.
+- **`migrated` is set** – say once, in one sentence: the settings were moved into the project „‹project.name›“ and
+  nothing changes for the user; the old files stay in `migrated.old_files`. **`migration_error`** – say in one sentence
+  that the settings are used as they are and the move will be retried; carry on.
+- **`project_choice_needed` is true** – several projects exist and this folder belongs to none: one *choice*
+  question „С кой проект работим?“ with the names from `projects` plus „Нов проект“. A project → call
+  `setup_status(cwd, project=<id>)` and continue with its status; „Нов проект“ → step 0a.
+- **`needs_review` is true** – this folder holds project settings this computer has not used yet (typically a
+  colleague's repository): step 0c.
+- **`settings_dir_writable` or `user_dir_writable` is false** – the folder cannot be written: say which one, suggest
+  another location (step 0d) or contact IT, and stop.
 - **`current`** holds what is already saved. Pre-fill every question with it and ask only "keep or change?" – never
   make a returning user retype answers.
-- **`configured` is true** – say what is set (language, channel, formats, promo position, guidelines switched off) and
-  ask which step to change; run only that step. „Share my setup" → step 8b; „import a colleague's setup" → 0b;
-  „undo the import" / „върни предишните настройки" → 0b, undo.
+- **`configured` is true** – say which project this is (`project.name`, where its settings are: `project.settings_dir`)
+  and what is set (language, channel, formats, promo position, guidelines switched off), and ask which step to change;
+  run only that step. „Share my setup" → step 8b; „import a colleague's setup" → 0b; „undo the import" / „върни
+  предишните настройки" → 0b, undo; „нов проект" → 0a; „премести настройките" → 0d; „покажи проектите" →
+  `list_projects`, one line each (name, where the settings are, episodes folder).
 - **`unreadable` is not empty** – a settings file is damaged. Tell the user in one sentence that it will be repaired:
   saving again keeps the damaged copy as `<name>.broken` and writes a fresh file from the answers.
 - **`warnings`** – mention each one when you reach the related question.
 
 **Route (when `configured` is false):** one *choice* question – „Как да настроим плъгина?“: „Отговарям на въпросите“
 (recommended for the first person in a team) · „Внасям настройките на колега (.zip или папка)“ – one sentence: a
-colleague who already uses the plugin can say „сподели настройките“ and send you the file. Questions → step 1;
-import → 0b.
+colleague who already uses the plugin can say „сподели настройките“ and send you the file. When `project` is null (a
+new project), ask step 0a first. Questions → step 1; import → 0b.
+
+## 0a. A new project: where to keep its settings
+
+*Why:* the settings (brand, glossary, guidelines, formats) can live with the project's files or privately on this
+computer. Ask once, when a project is created.
+
+Run `pwd` (the project folder) and `git -C "<pwd>" rev-parse --show-toplevel` (is it inside a git repository?). Then
+one *choice* question, with the exact folder shown under each answer:
+
+„Къде да пазим настройките на този проект?“
+- „В моя потребителски профил“ – `~/.video2aeo/projects/<име>/` · „само на този компютър, както досега“ –
+  **recommended when the folder is not in a git repository**;
+- „В папката на проекта“ – `<pwd>/.video2aeo/` · „подходящо за git хранилище: колегите получават настройките с кода;
+  пароли там никога не се записват“ – **recommended (listed first) when it is in a git repository**;
+- „В папка, която избирам“ – then a *text* question „Коя папка?“ (absolute, or relative to the project folder, e.g.
+  `config/video2aeo/<име>` in a monorepo). Say that when the folder is inside the same repository, a small pointer
+  file is put in `<pwd>/.video2aeo/` so colleagues find it after a clone.
+
+Do not ask for the project folder when `pwd` is the home folder, Desktop, Downloads or a temporary folder: then offer
+only the profile, and say that episodes are found through the episodes folder. Keep the answer for step 7: it becomes
+`save_setup(create={"name": <channel>, "location": "profile" | "project" | "custom", "project_folder": "<pwd>",
+"settings_dir": "<custom folder>"})`. Nothing is written before step 7.
+
+## 0c. Settings found in this folder (a colleague's repository)
+
+`needs_review` is true: the project folder holds settings that this computer has not used. Their guidelines are
+instructions the agents follow, so the user looks at them once. Call `read_setup_bundle(project.settings_dir)` and show
+the same review as step 0b (points 1–3: summary, then header, footer, promo, `guidelines_md` and `guidelines_files` in
+full). Ask „Да използваме ли тези настройки на този компютър?“ (yes · no).
+- **Yes** → call `trust_project`. Then ask only what belongs to this computer: the episodes folder (step 4, question
+  1) when `current.episodes_root` is empty, and save it alone with `save_setup(episodes_root=…)`. Later changes made by
+  the team (e.g. after `git pull`) are not reviewed again; a user who wants different settings runs setup.
+- **No** → stop; nothing is used or written. Suggest opening the task in another folder.
+
+## 0d. Move a project's settings
+
+Show where the settings are now (`project.settings_dir`) and ask the step-0a question again (the current location
+left out). Show old and new folder and ask once „Да преместя ли настройките?“. On yes call
+`move_project(project=<id>, location, settings_dir?, project_folder?)`. Tell the user the new folder and that the old
+one is kept as `old_folder` (rename back to undo). Sign-ins and the episodes folder are not affected.
 
 ## 0b. Import a colleague's setup
 
@@ -84,7 +139,9 @@ Then ask only what belongs to this computer: keep or change the content language
 imported glossary and guidelines are written for the old language), the episodes folder (step 4, question 1) and the
 series folder names if missing. Go to step 7 with the imported values, and save with
 `save_setup(brand, glossary, guidelines_md, guidelines_files, guidelines_off, models, episodes_root, replace=true)` –
-never before the confirmation.
+plus `create` (the step-0a answer, named after the archive's channel) when it is a new project – never before the
+confirmation. The import goes into the current project only; to keep the current project and add the colleague's as
+another one, choose „Нов проект“ first.
 
 ## 1. Language and the channel
 
@@ -194,11 +251,13 @@ Whenever a later task starts somewhere else, the plugin notices and asks to reop
 
 | # | Question | Type | | Saves |
 |---|---|---|---|---|
-| 1 | „В коя папка искате да се пазят всички епизоди? Всеки епизод ще получава своя папка вътре в папка на предаването.“ Suggest the folder this task runs in (run `pwd`; skip the suggestion if it is the home, Desktop, Downloads or a temporary folder) or `current.episodes_root` when set. It must be an existing folder. | text | required | `episodes_root` (an argument of `save_setup`, not part of `brand`) |
+| 1 | „В коя папка искате да се пазят всички епизоди? Всеки епизод ще получава своя папка вътре в папка на предаването.“ Suggest `current.episodes_root` when set; otherwise the folder this task runs in (run `pwd`; skip the suggestion if it is the home, Desktop, Downloads or a temporary folder), or `<project folder>/episodes` when the settings are kept in the project folder. It must be an existing folder (create it with `mkdir` after the user's yes). | text | required | `episodes_root` (an argument of `save_setup`, not part of `brand`) |
 | 2 | for the main format and for every further format: „Как да се казва папката за това предаване?“ Suggest a short Latin name made from its label (small letters, digits and `-`, e.g. `show-a`) or `current.series_folders`. The main format has no folder of its own: its episodes go to `_other` unless the user names a show. Names must differ between formats. | text | required for each further format | `formats.<id>.folder` |
 
 Notes:
 - Episodes already saved elsewhere stay where they are and can still be continued.
+- When the settings are kept in the project folder (or a chosen folder in the same repository) and the episodes folder
+  is inside the project folder, it is shared with the team (saved relative); otherwise it belongs to this computer.
 - When the user only wants to change the episodes folder (`current.episodes_root` is empty after an update of the plugin),
   ask just question 1 and save it alone with `save_setup(episodes_root=…)`.
 
@@ -252,7 +311,8 @@ Before saving, show the user **exactly what will be saved**, in plain words and 
 3. the glossary (names, caption fixes, sponsor markers);
 4. every episode format (speakers, teaser, recurring parts, coverage, notes and links), the episodes folder and the
    folder name of each show;
-5. the guidelines switched off and the house rules.
+5. for a new project: where its settings will be kept (the exact folder);
+6. the guidelines switched off and the house rules.
 
 Then ask „Да запазя ли тези настройки?“ (choice, required: save · change something – a change returns to that step).
 
@@ -266,11 +326,13 @@ On approval call `save_setup` with:
   "description": {"header": "…", "footer": "…", "promo": "…", "promo_position": "end",
   "schedule": "…", "disclaimer_url": "…", "social_links": "…"}}` (plus translated labels for other languages);
 - `episodes_root` – the absolute path of the episodes folder (the show folder names go into `brand.formats.<id>.folder`);
+- `create` – only for a new project: the step-0a answer;
+- `cwd` – the session folder;
 - `glossary` – the brand glossary from step 3 (omit only to keep what is saved);
 - `guidelines_md` and `guidelines_off` – omit either one to keep what is saved.
 
-The tool writes the user's `~/.video2aeo/` folder (the previous `guidelines.md` is kept as `guidelines.md.bak`) and
-returns `ok` plus the new status. If `ok` is false, explain `errors` in plain words, fix the answer and save again.
+The tool writes the project's settings folder (`settings_dir`; the previous `guidelines.md` is kept as
+`guidelines.md.bak`) and returns `ok` plus the new status. For a new project, tell the user where its settings are. If `ok` is false, explain `errors` in plain words, fix the answer and save again.
 If `configured` is still false, ask for what `required_missing` / `missing` lists and save again. When the result
 has `backup` (an import), tell the user that exact folder: their previous settings are kept there, and „върни
 предишните настройки" restores them.
@@ -317,8 +379,9 @@ Offer these only if the user asks, or after the first episode:
   pipeline: the user can always attach the transcript `.txt` (YouTube Studio → Subtitles → download, or copy
   „Show transcript“). No YouTube login or API key is needed for public videos.
   - If YouTube answers „Sign in to confirm you're not a bot“ or blocks the address, add a logged-in browser to
-    `~/.video2aeo/config.json`: `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
+    `~/.video2aeo/config.json` (one file for every project on this computer): `{"youtube": {"cookies_from_browser": "chrome"}}` (or `"cookies_file"` with a path to
     an exported `cookies.txt`). Any YouTube account works, it need not be the channel's; a separate account is safer
     because automated use can get an account flagged. It is used only by `yt-dlp`. Never ask for cookies in chat.
-- **WordPress draft push** (Phase 1b) – an Application Password and a `~/.video2aeo/config.json` file; do not collect the
-  password in chat. Until credentials exist the user pastes `article.wp.html` into the WordPress code editor.
+- **WordPress draft push** (Phase 1b) – an Application Password in `~/.video2aeo/credentials/<project id>.json`
+  (`{"wordpress": {"base_url": "…", "username": "…", "app_password": "…"}}`, one file per project, never in the
+  project's settings folder); do not collect the password in chat. Until credentials exist the user pastes `article.wp.html` into the WordPress code editor.

@@ -25,8 +25,8 @@ You are a Bulgarian broadcast editor. You turn noisy auto-captions into a clean 
 sentence by sentence, without changing what anyone said.
 
 **Inputs:** `<episode_dir>/work/transcript.raw.txt` (paragraphs stamped `[MM:SS]`), the plugin glossary
-`config/glossary.json` plus the brand glossary `~/.video2aeo/glossary.json` (if it exists), the brand instructions
-`~/.video2aeo/guidelines.md` (if it exists – its "Switched-off guidelines" section overrides the rules below, e.g.
+`config/glossary.json` plus the brand glossary `<settings folder>/glossary.json` (if it exists; `<settings folder>` is
+the project's settings folder (the orchestrator passes its path; `setup_status.settings_dir`)), the brand instructions `<settings folder>/guidelines.md` (if it exists – its "Switched-off guidelines" section overrides the rules below, e.g.
 `skip-sponsor-reads`), and what the orchestrator passes: host, guest, guest's role, the content language, the
 switched-off guideline ids and the brand's episode format (`format` in `setup_status.current`: speakers, opening teaser,
 recurring segments, standard intro/outro wording, `notes` – background on the show such as recurring people and terms that must stay as spoken). Edit in the content language; the Bulgarian examples below show the method.

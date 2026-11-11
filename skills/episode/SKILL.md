@@ -12,10 +12,14 @@ metadata:
 
 # /video2aeo:episode – transcript → knowledge map → YouTube description
 
-**STOP – preflight, before anything else:** call `setup_status`. If the tool is missing or fails to start, the helper
-is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue once the tools
-work. If `configured` is false (or `~/.video2aeo/setup.json` is absent), do NOT read the transcript, write any text or
-call any other tool – run the `setup` skill now and only then continue with the user's request. The output tools also refuse to run
+**STOP – preflight, before anything else:** run `pwd` and call `setup_status(cwd)`. If the tool is missing or fails to
+start, the helper is not running: follow the `doctor` skill yourself (do not just tell the user to run it) and continue
+once the tools work. If `project_choice_needed` is true, ask once which project to use (names from `projects`) and call
+`setup_status(cwd, project=<id>)`. If `configured` is false (or `needs_review` is true), do NOT read the transcript,
+write any text or call any other tool – run the `setup` skill now and only then continue with the user's request. Say
+the project once at the start („Проект: ‹project.name›“) so a wrong one is noticed. Pass `cwd` to every later tool
+call. A `project_mismatch` error means the episode belongs to another project: stop and tell the user. The settings
+folder below is `setup_status.settings_dir`. The output tools also refuse to run
 (`setup_required: true`) until setup is done; if one does, stop and run the `setup` skill.
 
 **Then check the working folder:** run `pwd` and call `workspace_status(cwd)`. When `ok` is false (`suspicious`,
@@ -34,8 +38,8 @@ self-contained sentences.
 Read, once at the start and in this order:
 1. `${CLAUDE_PLUGIN_ROOT}/instructions/aeo-rules.md` – the general AEO principles.
 2. `${CLAUDE_PLUGIN_ROOT}/instructions/youtube-description.md` – how the description, chapters and title are built.
-3. The brand config: the plugin's `config/brand.json` merged with `~/.video2aeo/brand.json`.
-4. User/brand instructions, if present: `~/.video2aeo/guidelines.md` and every `~/.video2aeo/guidelines/*.md`. They extend
+3. The brand config: the plugin's `config/brand.json` merged with `<settings folder>/brand.json`.
+4. User/brand instructions, if present: `<settings folder>/guidelines.md` and every `<settings folder>/guidelines/*.md`. They extend
    and override the general guidelines – but never the rules the code enforces (YouTube limits, chapter rules,
    number traceability).
 Models: every agent call gets the model of its operation from `setup_status.models.operations.<operation>.model`
@@ -43,7 +47,8 @@ Models: every agent call gets the model of its operation from `setup_status.mode
 means leave `model` out. Never choose a model yourself and never pick a heavier one "to be safe" – the defaults are tuned
 for speed. If a delegated call fails or its output is rejected twice, retry once with that operation's `fallback` model
 and note it (`progress_note`). If `models.errors` is not empty, mention it once; the defaults are used for the bad entries.
-Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the content language
+Pass the same instructions on to every agent you delegate to, and tell each agent explicitly: the settings folder
+(`setup_status.settings_dir` – the agents read the brand files there), the content language
 (`language_name` from `setup_status.current`), the switched-off guideline ids (`setup_status.guidelines_off`) –
 those general guidelines are not applied anywhere in the episode – and the episode's format (the base `setup_status.current.format` with the chosen profile from `current.formats` merged
 over it: speakers, opening teaser, recurring segments, intro/outro wording, the free-text `notes` about the show and its `links`) plus the `coverage` plan of this episode.
@@ -93,7 +98,7 @@ transcript") or attaches it. Import it with `import_transcript(file, episode_dir
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/aeo.py import <file> <episode_dir>`); it lands in `work/`.
 
 Optional (automatic): when no file is given, call `fetch_transcript(url, episode_dir)`. It tries
-youtube-transcript-api, then `yt-dlp` (optional browser cookies in `~/.video2aeo/config.json`).
+youtube-transcript-api, then `yt-dlp` (optional browser cookies in `~/.video2aeo/config.json`, for every project).
 - **`missing_subtitle_tools` is in the result** – no download tool is installed, so YouTube was never asked. Do not
   make the user open a terminal: make the one-question offer of the `setup` skill's last step (same wording, same
   rules). On yes call `install_subtitle_tools`; on `ok: true` call `fetch_transcript` again once. On no, or `ok: false`

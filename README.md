@@ -68,8 +68,35 @@ computer and walks you through the fix (on Windows it also adds Git's folder to 
   `video2aeo-setup-<channel>-<date>.zip`. You choose „import a colleague's setup“, review what it brings (its guidelines
   and published texts are shown in full), and answer only what belongs to your computer – the episodes folder.
 
-Either way setup ends by offering the automatic subtitle download, and writes `~/.video2aeo/` for you – no files to
-edit by hand. Re-run `/video2aeo:setup` any time to change answers, import again or share.
+Either way setup ends by offering the automatic subtitle download, and writes the project's settings for you – no
+files to edit by hand. Re-run `/video2aeo:setup` any time to change answers, import again, share, add a project or
+move the settings.
+
+## Several projects
+
+One computer can work for several brands or shows. Each **project** has its own brand, glossary, guidelines, formats,
+models, episodes folder and WordPress sign-in. When you create a project, setup asks where to keep its settings:
+
+| Choice | Folder | Good for |
+|---|---|---|
+| In my user profile (default) | `~/.video2aeo/projects/<id>/` | Only this computer, as before |
+| In the project folder | `<project>/.video2aeo/` | A git repository: colleagues get the settings with the code |
+| A folder I choose | e.g. `<monorepo>/config/video2aeo/<show>/` | A monorepo with its own config layout; a small `<project>/.video2aeo/location.json` points to it |
+
+The plugin finds the project from the folder the task runs in – the nearest `.video2aeo/` above it, else this
+computer's list of projects (`~/.video2aeo/projects.json`); with only one project, that one. Several shows in one
+monorepo work (`apps/show-a/.video2aeo/`, `apps/show-b/.video2aeo/` – the nearest wins). Every run names the project
+first, and a tool refuses an episode that belongs to another project than the session's.
+
+Settings in a project folder hold **team files only** – passwords and cookies always stay in `~/.video2aeo/`, so they
+are safe to commit (a `.gitignore` keeps local backups out). A colleague who clones the repository reviews those
+settings once (like an imported setup) and then answers only the computer-specific questions. To move a project's
+settings later, say „move the settings“ in `/video2aeo:setup`; the old folder is kept as `<name>-moved-<date>`.
+
+**Upgrading from 0.9 (one project):** nothing to do. On the first start your settings are copied into the project
+`~/.video2aeo/projects/<channel>/` with the same episodes folder; WordPress sign-in moves to
+`~/.video2aeo/credentials/<id>.json`. Your old files stay in `~/.video2aeo/` unchanged (with a
+`MOVED-TO-PROJECTS.txt` note), so 0.9 still works if you go back – changes made in the new version are not seen there.
 
 **Share your setup:** say „share my setup“ (or run `/video2aeo:setup` and ask). You get one `.zip` with the brand,
 glossary, guidelines, episode formats, switched-off guidelines and model choices – never WordPress passwords, YouTube
@@ -104,7 +131,7 @@ or commit them. Private or unpublished videos still need an account that has acc
 
 When a new version is published (the `version` in the repository changes), open Settings → Plugins, refresh the
 marketplace if the new version is not shown, and click **Update** on **video2aeo**. Start a new Claude Code environment
-afterwards. Your settings in `~/.video2aeo/` are not touched.
+afterwards. Your settings are not touched (the 0.10 upgrade copies them into a project – see „Several projects“).
 
 ## Who does what
 
@@ -118,7 +145,7 @@ afterwards. Your settings in `~/.video2aeo/` are not touched.
 
 `instructions/` holds the plugin's general instructions – `aeo-rules.md` (principles), `youtube-description.md`,
 `wordpress-article.md` (structure, SEO fields, tags, internal links), and `episode-schema.md`.
-Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructions/README.md`.
+Brand additions go to `<settings folder>/guidelines/<same file name>`. See `instructions/README.md`.
 
 ## Components
 
@@ -133,7 +160,7 @@ Brand additions go to `~/.video2aeo/guidelines/<same file name>`. See `instructi
 | Agent | `knowledge-mapper` | Edited transcript → `episode.json` |
 | Agent | `aeo-reviewer` | Independent review before each approval |
 | Hook | SessionStart | Python-free check that Python (and on Windows `sh`) can be found; never blocks |
-| MCP (local) | `video2aeo` | `setup_status`, `check_environment`, `save_setup`, `read_setup_bundle`, `export_setup`, `workspace_status`, `episode_path`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `install_subtitle_tools`, `get_video_info`, `fetch_transcript`, `wp_push_draft` |
+| MCP (local) | `video2aeo` | `setup_status`, `list_projects`, `trust_project`, `move_project`, `check_environment`, `save_setup`, `read_setup_bundle`, `export_setup`, `workspace_status`, `episode_path`, `episode_status`, `split_transcript`, `merge_transcript`, `progress_note`, `import_transcript`, `render_package`, `validate_package`; optional `install_subtitle_tools`, `get_video_info`, `fetch_transcript`, `wp_push_draft` |
 
 Agents, the hook and the local tool server load in **Claude Code mode** of the desktop app and in the Claude Code CLI.
 In plain chat only the skills load, so always work in Code mode.
@@ -147,19 +174,24 @@ models“ (profile fast / balanced / quality, or single operations).
 ## Brand, glossary and guidelines
 
 The plugin is brand-neutral and ships general AEO guidelines and best practices (`instructions/aeo-rules.md`). Each
-user's brand lives on their computer in `~/.video2aeo/`:
+brand lives in its project's **settings folder** (see „Several projects“):
 
 | File | Purpose |
 |---|---|
+| `project.json` | Project id and name, model choices, and the episodes folder when it is shared (relative to the project folder) |
 | `brand.json` | Channel, series, topics, site, organization, people, episode formats, approved footer/promo block, disclaimer – any keys of `config/brand.json`, merged over it |
 | `glossary.json` | Brand names, people, ASR fixes, sponsor-read markers – added to `config/glossary.json` |
 | `guidelines.md` and `guidelines/*.md` | Brand-specific instructions (house style, tone, terminology, compliance); they extend the general guidelines, `guidelines/<output>.md` per output |
 | `setup.json` | Setup done, guidelines switched off |
-| `config.json` | This computer only: episodes folder, model choices, and optionally WordPress credentials and YouTube cookies (`chmod 600`) – never shared |
+
+This computer's own data stays in `~/.video2aeo/` and is never shared: `projects.json` (the projects, their folders and
+episodes folders), `credentials/<id>.json` (WordPress sign-in per project, `chmod 600`), `config.json` (YouTube
+cookies for every project) and `projects/<id>/` (settings kept in the profile).
 
 You normally never edit these files: the `setup` skill writes them after you approve a summary (the previous
 `guidelines.md` is kept as `guidelines.md.bak`, an import keeps the replaced files in `backup-<date>/`, a damaged file
-is kept as `<name>.broken`). Set `VIDEO2AEO_HOME` to use another folder.
+is kept as `<name>.broken`). Set `VIDEO2AEO_HOME` to use another user folder, or `VIDEO2AEO_PROJECT` to point a
+headless run at one settings folder.
 
 ## Developing (Claude Code) and testing (Claude Desktop)
 
@@ -169,6 +201,7 @@ The repo root is the plugin. Develop in Claude Code, which loads skills, agents 
 claude --plugin-dir .                              # load locally
 claude plugin validate .                           # manifest/structure
 python3 dev/smoke.py                               # setup flow, rendering and validation on a built-in fictional episode (temp folders)
+python3 dev/smoke_projects.py                      # several projects, settings locations, 0.9 upgrade (temp folders)
 cd dev && npm i && npm run validate-blocks         # WordPress's own block validator on that rendered article
 ```
 

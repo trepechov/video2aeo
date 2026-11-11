@@ -7,7 +7,7 @@ AEO YouTube description with timestamps and a readable + AEO-ready blog article 
 embedded first.
 
 The plugin is brand-neutral. Every brand (channel, site, people, approved footer, glossary, house rules) lives on the
-user's computer in `~/.video2aeo/`, never in this repo. Developers keep brand files in the git-ignored `private/` folder.
+user's computer in a per-project settings folder (decision 9), never in this repo. Developers keep brand files in the git-ignored `private/` folder.
 
 ---
 
@@ -62,13 +62,13 @@ the `episode` skill runs the same steps and gates inline; outputs are produced a
 | Layer | Where | What |
 |---|---|---|
 | General (ships with the plugin) | `instructions/` – `aeo-rules.md`, `episode-schema.md` and one file per output (`youtube-description.md`, `wordpress-article.md`, `facebook-post.md`) | AEO best practices: five pillars, citable sentences, chapter and title rules, article structure, attribution, freshness |
-| Brand data | `~/.video2aeo/brand.json` (merged over `config/brand.json`), `~/.video2aeo/glossary.json` (added to `config/glossary.json`) | Channel, series, topics, site, organization, people, approved footer/promo block, disclaimer, names, ASR fixes, sponsor-read markers |
-| User/brand instructions | `~/.video2aeo/guidelines.md` and/or `~/.video2aeo/guidelines/*.md` (plain Markdown) | House style, tone, terminology, compliance rules, the brand's own AEO handbook; extend and override the general layer |
+| Brand data | `<settings folder>/brand.json` (merged over `config/brand.json`), `<settings folder>/glossary.json` (added to `config/glossary.json`) | Channel, series, topics, site, organization, people, approved footer/promo block, disclaimer, names, ASR fixes, sponsor-read markers |
+| User/brand instructions | `<settings folder>/guidelines.md` and/or `<settings folder>/guidelines/*.md` (plain Markdown) | House style, tone, terminology, compliance rules, the brand's own AEO handbook; extend and override the general layer |
 | Code rules (cannot be overridden) | `scripts/aeo_lib.py` | YouTube limits, chapter rules, block markup, FAQ/schema parity, number traceability |
 
-The orchestrator reads the layers in that order and passes them to every agent. Different users (brands) need only a
-different `~/.video2aeo/` folder. Developers point `VIDEO2AEO_HOME` at another folder to switch brands (the dev checks use a
-temporary `VIDEO2AEO_HOME`).
+The orchestrator reads the layers in that order and passes them to every agent. The settings folder is the active
+project's (decision 9): `<project>/.video2aeo/`, `~/.video2aeo/projects/<id>/` or a folder the user chose. The dev checks
+use a temporary `VIDEO2AEO_HOME` (the user folder); `VIDEO2AEO_PROJECT` points a headless run at one settings folder.
 
 Principles: **LLM for language, code for rules**; one structured source (`episode.json`) so description, article and
 schema can't drift; nothing is ever published automatically; promo text only from the approved brand config;
@@ -103,7 +103,7 @@ Input: a transcript `.txt` file added by the user. Output: text files the user c
 WordPress. No YouTube download, no WordPress push, no credentials.
 
 1. Publish the repo on GitHub and set up the marketplace (see §6, decision 1); install in Desktop from it.
-2. Create the first brand folder (`~/.video2aeo/brand.json`, `glossary.json`, `guidelines.md`) from the brand owner's
+2. Create the first brand folder (a project's settings folder: `brand.json`, `glossary.json`, `guidelines.md`) from the brand owner's
    material; fill every `{{…}}` placeholder.
 3. Run the manual flow end to end on the developer Mac, in Claude Code and in Desktop Code mode: transcript `.txt` →
    `youtube-description.txt` + `article.wp.html` + `wp-post-fields.json` → paste by hand → check chapters on YouTube
@@ -122,7 +122,7 @@ Not built or not yet hardened – each item is new work:
 1. Automatic subtitles: install `youtube-transcript-api` into the interpreter Desktop uses; have the MCP server or
    `setup` report `sys.executable` and import status; test `fetch_transcript` on 3 channel URLs (home + office).
 2. Credential hardening, **before** any live `wp_push_draft`: a deterministic `aeo.py setup` writes
-   `~/.video2aeo/config.json` with mode `0600`; the shared push function (used by `wp_push_draft` and `aeo.py wp-draft`)
+   `~/.video2aeo/credentials/<project id>.json` with mode `0600`; the shared push function (used by `wp_push_draft` and `aeo.py wp-draft`)
    rejects non-https `base_url` and cross-host redirects; a dedicated Author-role WP account with a revocable
    Application Password.
 3. Gate sign-off by a human-run command (`aeo.py approve <dir> B --by <name>`), not by the agent; `wp_push_draft` is
@@ -172,5 +172,13 @@ channel wants to own; monthly AI-visibility check (ask LLMs the episode question
    The plugin cannot choose the session folder, so skills call `workspace_status` and stop when it is wrong, and the
    output tools refuse paths outside the layout (`allow_outside_root` overrides). Plan: `docs/plans/2026-10-22-001-feat-episodes-root-series-folders-plan.md`.
    Open: confirm in Desktop Code mode that the path the model sees (`pwd`) matches the path the MCP server sees.
+
+9. **Decided (12 Nov 2026, 0.10.0):** several projects per computer; supersedes "brands live in `~/.video2aeo/`" of
+   decision 2. Each project's team files sit in a settings folder the user chooses – the user profile (default), the
+   project folder (committable; for monorepos) or a custom folder linked by `<project>/.video2aeo/location.json`.
+   Sign-ins, the project list and computer-specific episodes folders stay in `~/.video2aeo/`. The project is resolved
+   per call from the session/episode folder; a 0.9 folder is converted once and its files are left in place; settings
+   found in a cloned folder are reviewed once per computer, later changes are not. Plan:
+   `docs/plans/2026-11-12-001-feat-multiple-projects-plan.md`.
 
 Brand-specific open questions (site, canonical URL, schedule wording) are tracked with the brand files, not here.

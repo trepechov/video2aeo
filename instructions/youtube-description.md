@@ -84,6 +84,6 @@ The chosen title is both the YouTube title and the WordPress article title.
 ## Extending
 
 Add further rules here (hashtag policy, pinned-comment text, end-screen wording …). Brand-specific additions belong
-in `~/.video2aeo/guidelines/youtube-description.md`.
+in `<settings folder>/guidelines/youtube-description.md` (the project's settings folder).
 
 See `skills/episode/references/example-youtube-description.txt` for a complete rendered example (fictional brand).

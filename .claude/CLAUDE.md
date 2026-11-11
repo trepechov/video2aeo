@@ -9,8 +9,10 @@ Content language is **Bulgarian**; code, comments and docs are English.
 
 ## Brand-neutral repo (do not break)
 - No real brand data in commits: no channel/company names, people, site URLs, promo text, brand glossary or real
-  episodes. Brands live in `~/.video2aeo/` on the user's computer (`brand.json`, `glossary.json`, `guidelines.md`,
-  `config.json`); `config/` holds generic defaults with `{{PLACEHOLDERS}}`.
+  episodes. Brands live in per-project settings folders on the user's computer (`project.json`, `brand.json`,
+  `glossary.json`, `guidelines.md`, `setup.json`) – in `~/.video2aeo/projects/<id>/`, `<project>/.video2aeo/` or a
+  chosen folder; `~/.video2aeo/` keeps `projects.json`, `credentials/<id>.json` and `config.json` (YouTube cookies).
+  `config/` holds generic defaults with `{{PLACEHOLDERS}}`.
 - Developer brand files and the pre-neutral snapshot live in git-ignored `private/` (see `private/BRAND-NOTES.md`).
   Read them for context; never copy their content into tracked files.
 - No example folders are kept in the repo; tests build a fictional episode on the fly (`dev/fixture.py`).
@@ -29,16 +31,22 @@ Content language is **Bulgarian**; code, comments and docs are English.
 - `hooks/` – only a fail-open, Python-free SessionStart dependency check (`check-deps.sh`). Never add blocking `PreToolUse` hooks
   (`dev/release.sh` fails on them). `skills/doctor` (`/video2aeo:doctor`) diagnoses Python/Git without the helper and is
   the only in-app place with install steps (the README keeps the pre-install requirements).
-- `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading (`USER_DIR`,
-  `VIDEO2AEO_HOME`). `scripts/aeo_pipeline.py` – transcript chunks, merge, `progress.json`, `episode_status` (state is derived from files). `scripts/aeo_net.py` – optional YouTube + WordPress network calls, subtitle tool install. `scripts/aeo_setup.py` – `check_environment`, pip helpers, setup archive (`export_setup`, `read_setup_bundle`: whitelist, untrusted input, never credentials). `scripts/aeo.py` – CLI.
-- Episode folders: one `episodes_root` (setup → `~/.video2aeo/config.json`) → `<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/`;
+- `scripts/aeo_project.py` – projects: `Project`, `resolve` (VIDEO2AEO_PROJECT > nearest `.video2aeo/` with
+  `project.json`/`location.json` > `projects.json` > only project), the active project per call (`using`), create /
+  trust / move, the one-time 0.9 conversion (copy-verify, old files left in place, legacy read on failure). Settings are
+  never read through a global path: use `L.settings_dir()`, `L.team_config()`, `L.episodes_root()`, `project.credentials()`.
+- `scripts/aeo_lib.py` – parsing, rendering (description, Gutenberg, JSON-LD), validation, brand loading. `scripts/aeo_pipeline.py` – transcript chunks, merge, `progress.json`, `episode_status` (state is derived from files). `scripts/aeo_net.py` – optional YouTube + WordPress network calls, subtitle tool install. `scripts/aeo_setup.py` – `check_environment`, pip helpers, setup archive (`export_setup`, `read_setup_bundle`: whitelist, untrusted input, never credentials). `scripts/aeo.py` – CLI.
+- Episode folders: one `episodes_root` per project (setup → `projects.json`, or relative in `project.json` when inside the project folder) → `<series folder>/<yyyy-mm>-<series>-<nn>-<slug>/`;
   paths are built by `episode_path`, the session folder is checked by `workspace_status`, and the output tools refuse
   other locations (`aeo_lib`: `classify_workspace`, `check_episode_dir`; override `allow_outside_root`).
-- `config/brand.json`, `config/glossary.json` – generic defaults, merged with `~/.video2aeo/` files. `config/models.json` – default model per delegated operation; the user may override via `models` in `~/.video2aeo/config.json` (default = plugin table, setup never asks).
-- `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`
+- `config/brand.json`, `config/glossary.json` – generic defaults, merged with the project's settings folder. `config/models.json` – default model per delegated operation; the user may override via `models` in the project's `project.json` (default = plugin table, setup never asks).
+- `dev/` – developer-only: WordPress block validator, `package.sh`, `release.sh` (checks + version bump), `smoke.py`, `smoke_projects.py`
   (setup flow and footer/promo rendering against a temp `VIDEO2AEO_HOME`). Not shipped.
-- Setup: every user-facing skill preflights with the `setup_status` tool; the `setup` skill interviews the user and
-  writes `~/.video2aeo/` via `save_setup` (marker `setup.json`). Adjustable guideline ids live in
+- Server: every tool takes `cwd` and `project`; the session's project is bound by `setup_status` (or `project`); a call
+  with `episode_dir` of another project fails with `project_mismatch`. New tools: `list_projects`, `trust_project`,
+  `move_project`; `save_setup(create=…)` makes a project.
+- Setup: every user-facing skill preflights with the `setup_status(cwd)` tool; the `setup` skill interviews the user and
+  writes the project's settings folder via `save_setup` (marker `setup.json`). Adjustable guideline ids live in
   `skills/setup/references/guideline-catalog.md`, `aeo-rules.md` tags and `ADJUSTABLE_GUIDELINES` – keep all three in sync.
 
 ## Principles (do not break)
@@ -46,7 +54,7 @@ Content language is **Bulgarian**; code, comments and docs are English.
 2. Every output is rendered from `episode.json` – never hand-edit rendered files.
 3. Nothing publishes automatically. WordPress push is optional, draft-only and requires the article approval (`gates.wordpress`).
 4. Promo text comes only from the approved brand config; opinions and forecasts are always attributed.
-5. General guidelines ship with the plugin; brand/user instructions come from `~/.video2aeo/guidelines*.md` and may
+5. General guidelines ship with the plugin; brand/user instructions come from `guidelines*.md` in the project's settings folder and may
    extend or override them, but never the code-enforced rules.
 6. No top-level `bin/` folder (claude.ai refuses such plugins). Agents, hooks and local MCP only load in Claude Code mode of the desktop app (Cowork no longer exists) or in the CLI.
 7. Runtime Python must stay stdlib-only and run on Python 3.9 (youtube-transcript-api / yt-dlp are optional, imported lazily).
@@ -62,6 +70,7 @@ server and fails (`${CLAUDE_PLUGIN_ROOT}` unset) – that is expected.
 ```bash
 claude plugin validate .
 python3 dev/smoke.py && /usr/bin/python3 dev/smoke.py                                          # setup, render + validate on the fictional fixture (3.14 and 3.9)
+python3 dev/smoke_projects.py && /usr/bin/python3 dev/smoke_projects.py                        # projects, locations, 0.9 conversion, server binding
 (cd dev && npm i && npm run validate-blocks)                                                  # expect invalid: 0, first block core/embed
 grep -rniIf private/brand-terms.txt --exclude-dir={.git,private,node_modules,episodes} --exclude=package-lock.json .   # expect no output
 ```
@@ -76,7 +85,7 @@ Iterate in Claude Code: `claude --plugin-dir .`
 The desktop app runs `.mcp.json` (`sh server/launch.sh`) with the GUI PATH; the launcher picks the first working Python >= 3.9 of
 `python3`, `python`, `py -3` (on this Mac `/usr/bin/python3`, 3.9, not Homebrew's 3.14). On Windows `sh` comes from Git for Windows.
 
-## Status (2 Nov 2026)
+## Status (12 Nov 2026)
 v0.1 moved from a cloud session to the local Mac and made brand-neutral (plugin named `yt-aeo`). 0.4.0 renamed it to **Video2AEO** (`video2aeo`, settings `~/.video2aeo/`). 0.5.0 added episode formats: `brand.format` +
 `brand.formats.<id>` profiles asked one question at a time in setup, a length-based coverage plan (`coverage_plan`), and
 teaser/boilerplate markers in the edited transcript.
@@ -95,9 +104,15 @@ headless on the Mac (`claude -p --plugin-dir .`, temp `VIDEO2AEO_HOME`): archive
 Fixture render/validate ok on Python 3.14 and 3.9; 60 Gutenberg blocks, 0 invalid. **Not yet tested:** Windows `path-check.ps1` (check + `-Fix`), agents + MCP in
 Desktop Code mode (incl. whether `pwd` matches the server's path in `workspace_status`), live `fetch_transcript`, `wp_push_draft`.
 
+0.10.0 (12 Nov 2026, plan `docs/plans/2026-11-12-001-…`): several projects per computer; settings in the profile
+(default), the project folder (committable, monorepos) or a custom folder linked by `location.json`; sign-ins per
+project in `~/.video2aeo/credentials/`; a 0.9 folder is converted on first start and its files stay in place (0.9 keeps
+working). Settings found in a clone are reviewed once (`trust_project`), never again on change. **Not yet tested:**
+Desktop Code mode with two projects (does `pwd` match the server's view), the setup skill's new steps run headless.
+
 ## Next steps (full list: `docs/plugin-build-plan.md` §3)
 1. Publish on GitHub + marketplace; install in Desktop from it.
-2. Phase 1a manual MVP: first brand folder in `~/.video2aeo/`; transcript `.txt` → text files, end to end in Code and Desktop; 5 back-catalogue episodes; freeze `episode.json` v1.0.
+2. Phase 1a manual MVP: first brand project; transcript `.txt` → text files, end to end in Code and Desktop; 5 back-catalogue episodes; freeze `episode.json` v1.0.
 3. `claude plugin eval` suite in `evals/` (excluded from the package).
 4. Phase 1b: automatic subtitles, credential hardening, human-run gate sign-off, HTML allowlist, then WP draft push.
 5. Phase 2: WordPress plugin „Video2AEO for WordPress“ (see plan).

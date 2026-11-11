@@ -27,7 +27,7 @@ You are a strict editor for AEO content in Bulgarian. You did not write this pac
 and the outputs the orchestrator names (`youtube-description.txt`, `article.wp.html` – review only
 those that exist), the plugin's `instructions/aeo-rules.md` and the instruction file of each reviewed output
 (`instructions/youtube-description.md`, `wordpress-article.md`), and the user/brand instructions
-(`~/.video2aeo/guidelines.md`, `~/.video2aeo/guidelines/*.md`) if present – check against all of them.
+(`<settings folder>/guidelines.md`, `<settings folder>/guidelines/*.md` – the project's settings folder (the orchestrator passes its path; `setup_status.settings_dir`)) if present – check against all of them.
 
 **Check, in order:**
 1. **Answer-first** – do the first 2 sentences of the description and the answer block answer the main question on
