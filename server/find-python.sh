@@ -9,7 +9,8 @@ find_python() {
     _extra="/Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/local/bin/python3 /opt/homebrew/bin/python3"
   for _cand in "python3" "python" "py -3" $_extra; do
     _exe=$(command -v "${_cand%% *}" 2>/dev/null) || continue
-    if [ "$_exe" = /usr/bin/python3 ] && ! xcode-select -p >/dev/null 2>&1; then continue; fi
+    # The stub check applies on macOS only. On Linux /usr/bin/python3 is the real system Python and xcode-select does not exist.
+    if [ "$(uname -s 2>/dev/null)" = Darwin ] && [ "$_exe" = /usr/bin/python3 ] && ! xcode-select -p >/dev/null 2>&1; then continue; fi
     if $_cand -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
       PY_CMD=$_cand
       return 0
