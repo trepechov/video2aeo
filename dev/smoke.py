@@ -79,7 +79,7 @@ try:
     S.externally_managed = lambda: True                                   # Homebrew / distro Python: pip is refused
     calls.clear()
     res = N.install_subtitle_tools()
-    check(not calls and res["ok"] is False and "yt-dlp" in res["manual_command"] and "pip" not in res["manual_command"],
+    check(not calls and res["ok"] is False and "yt-dlp" in res["manual_command"] and "pip install" not in res["manual_command"],
           f"externally managed Python must not run pip and must suggest another install: {res}")
     S.externally_managed = lambda: False
     N.shutil.which = lambda name: None
